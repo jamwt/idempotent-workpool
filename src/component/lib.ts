@@ -13,7 +13,6 @@ import { FrozenOptions, runResult, RunResult } from "./schema";
 import { MainLoop } from "./mainLoop";
 import { updateErrorStats } from "./stats";
 
-
 const mainLoop = new MainLoop({
   handle: internal.lib.loop,
 });
@@ -50,6 +49,7 @@ async function processIncoming(
       arguments: job.arguments,
       retries: 0,
       incomingId: job._id,
+      enqueuedAt: job._creationTime,
       canceled: false,
       options: job.options,
     });
@@ -137,6 +137,7 @@ async function processCancellations(
       toFinalize.push({
         job: committed._id,
         result: { type: "canceled" },
+        endedAt: Date.now(),
       });
     } else {
       // Is it still running?
@@ -168,6 +169,7 @@ async function processEnded(
     toFinalize.push({
       job: e.job,
       result: e.result,
+      endedAt: e.endedAt,
     });
   }
   return (await ctx.db.query("ended").first()) !== null;
@@ -203,7 +205,11 @@ async function processRunning(
         countRunning--;
         toFinalize.push({
           job: r.job,
-          result: { type: "failed", error: "Scheduler system error" },
+          result: {
+            type: "failed",
+            error: "Scheduler system error",
+          },
+          endedAt: Date.now(),
         });
         await ctx.db.delete(r._id);
       } else if (status.state.kind === "inProgress") {
@@ -220,6 +226,7 @@ async function processRunning(
         toFinalize.push({
           job: r.job,
           result: { type: "canceled" },
+          endedAt: Date.now(),
         });
         await ctx.db.delete(r._id);
       } else if (status.state.kind === "failed") {
@@ -231,6 +238,7 @@ async function processRunning(
         toFinalize.push({
           job: r.job,
           result: { type: "failed", error: "Scheduler system error" },
+          endedAt: Date.now(),
         });
         await ctx.db.delete(r._id);
       }
@@ -264,8 +272,14 @@ export async function handleFinalizations(
         committed._id,
         committed.retries,
         false,
-        true
+        f.endedAt - committed.enqueuedAt
       );
+      logger.event("job-end", {
+        jobId: committed.incomingId,
+        result: "success",
+        retries: committed.retries,
+        durationMs: f.endedAt - committed.enqueuedAt,
+      });
     } else {
       if (committed.retries >= committed.options.maxRetries) {
         logger.debug(
@@ -278,8 +292,14 @@ export async function handleFinalizations(
           committed._id,
           committed.retries,
           true,
-          true
+          f.endedAt - committed.enqueuedAt
         );
+        logger.event("job-end", {
+          jobId: committed.incomingId,
+          result: "failed",
+          retries: committed.retries,
+          durationMs: f.endedAt - committed.enqueuedAt,
+        });
       } else if (committed.canceled) {
         logger.debug(`Finalizing canceled job ${committed._id}`);
         await runOnComplete(logger, ctx, committed, { type: "canceled" });
@@ -289,8 +309,13 @@ export async function handleFinalizations(
           committed._id,
           committed.retries,
           false,
-          true
+          f.endedAt - committed.enqueuedAt
         );
+        logger.event("job-end", {
+          jobId: committed.incomingId,
+          result: "canceled",
+          durationMs: f.endedAt - committed.enqueuedAt,
+        });
       } else {
         // Need to reschedule!
         committed.retries++;
@@ -298,14 +323,14 @@ export async function handleFinalizations(
           `Error during execution: rescheduling job ${committed._id} (retry #${committed.retries})`
         );
         await ctx.db.patch(committed._id, committed);
-        await rescheduleJob(logger, ctx, committed);
-        await updateErrorStats(
-          ctx,
-          committed._id,
-          committed.retries,
-          true,
-          false
-        );
+        const retryInMs = await rescheduleJob(logger, ctx, committed);
+        await updateErrorStats(ctx, committed._id, committed.retries, true);
+        logger.event("job-retry", {
+          jobId: committed.incomingId,
+          retries: committed.retries,
+          durationMs: f.endedAt - committed.enqueuedAt,
+          retryInMs,
+        });
       }
     }
   }
@@ -341,7 +366,7 @@ async function rescheduleJob(
   logger: Logger,
   ctx: MutationCtx,
   committed: Doc<"committed">
-) {
+): Promise<number> {
   const backoffMs =
     committed.options.initialBackoffMs *
     Math.pow(committed.options.base, committed.retries - 1);
@@ -352,6 +377,7 @@ async function rescheduleJob(
     job: committed._id,
     segment,
   });
+  return nextAttempt;
 }
 
 export function withJitter(delay: number) {
@@ -365,7 +391,7 @@ async function runWheelJobs(logger: Logger, ctx: MutationCtx, count: number) {
   const wheelJobs = await ctx.db
     .query("wheel")
     .withIndex("by_segment")
-    .take(QUEUE_WINDOW);
+    .take(count);
   let running = 0;
   for (const job of wheelJobs) {
     if (running === count) {
@@ -413,11 +439,13 @@ export const execute = internalAction({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle = run.handle as FunctionHandle<"action", any, any>;
     let result: RunResult;
+    let endedAt;
     try {
       const startTime = Date.now();
       logger.debug(`Starting executing ${args.runId}`);
       const functionResult = await ctx.runAction(handle, run.arguments);
-      const duration = Date.now() - startTime;
+      endedAt = Date.now();
+      const duration = endedAt - startTime;
       logger.debug(
         `Finished executing ${args.runId} (${duration.toFixed(2)}ms)`
       );
@@ -427,6 +455,7 @@ export const execute = internalAction({
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
+      endedAt = Date.now();
       logger.error(`Error executing ${args.runId}: ${e.message}`);
       result = {
         type: "failed",
@@ -436,6 +465,7 @@ export const execute = internalAction({
     await ctx.runMutation(internal.lib.saveResult, {
       runId: args.runId,
       result,
+      endedAt,
     });
   },
 });
@@ -453,12 +483,14 @@ export const saveResult = internalMutation({
   args: {
     runId: v.id("committed"),
     result: runResult,
+    endedAt: v.number(),
   },
   handler: async (ctx, args) => {
     const logger = createLogger("DEBUG");
     await enqueueEnded(logger, ctx, {
       job: args.runId,
       result: args.result,
+      endedAt: args.endedAt,
     });
   },
 });

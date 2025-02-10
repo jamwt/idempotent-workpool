@@ -54,6 +54,7 @@ export default defineSchema({
     arguments: v.any(),
     retries: v.number(),
     incomingId: v.id("incoming"),
+    enqueuedAt: v.number(),
     canceled: v.boolean(),
     options: optionsObj,
   }).index("by_incoming", ["canceled", "incomingId"]),
@@ -70,6 +71,7 @@ export default defineSchema({
   ended: defineTable({
     job: v.id("committed"),
     result: runResult,
+    endedAt: v.number(),
   }),
   loopState: defineTable({
     wake: v.optional(v.id("_scheduled_functions")),
@@ -84,7 +86,7 @@ export default defineSchema({
     job: v.id("committed"),
     retry: v.number(),
     when: v.number(),
-    final: v.boolean(),
+    finalRunTime: v.optional(v.number()),
     error: v.boolean(),
   }),
   frozenConfig: defineTable({

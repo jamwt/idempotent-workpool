@@ -70,10 +70,11 @@ export declare const components: {
         "internal",
         { statsWindowMs?: number },
         {
-          oldestPending: number;
+          oldestPendingMs: number;
           pending: number;
           recentErrorRate: number;
           recentExecutions: number;
+          recentJobAverageMs: number;
           recentPermanentFailureRate: number;
         }
       >;

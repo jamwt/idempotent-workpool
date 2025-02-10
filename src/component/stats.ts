@@ -22,7 +22,7 @@ export const loop = internalMutation({
   handler: async (ctx) => {
     const stats = await ctx.db.query("stats").take(STATS_WINDOW);
     for (const s of stats) {
-      await updateErrorStats(ctx, s.job, s.retry, s.error, s.final);
+      await updateErrorStats(ctx, s.job, s.retry, s.error, s.finalRunTime);
       await ctx.db.delete(s._id);
     }
   },
@@ -34,7 +34,7 @@ export async function emitStats(
     job: Id<"committed">;
     retry: number;
     when: number;
-    final: boolean;
+    finalRunTime?: number;
     error: boolean;
   }>
 ) {
@@ -43,7 +43,7 @@ export async function emitStats(
       job: r.job,
       retry: r.retry,
       when: r.when,
-      final: r.final,
+      finalRunTime: r.finalRunTime,
       error: r.error,
     });
   }
@@ -60,7 +60,7 @@ export async function updateErrorStats(
   run: Id<"committed">,
   retry: number,
   error: boolean,
-  final: boolean
+  finalRunTime?: number
 ) {
   const key = Date.now();
   const id = `${run}-${retry}`;
@@ -76,11 +76,12 @@ export async function updateErrorStats(
       id,
     });
   }
-  if (final) {
+  if (finalRunTime) {
     await statsAggregate.insert(ctx, {
       namespace: "jobTotal",
       key,
       id,
+      sumValue: finalRunTime,
     });
     if (error) {
       await statsAggregate.insert(ctx, {
@@ -100,6 +101,7 @@ export async function getErrorStats(
   runTotal: number;
   jobErrors: number;
   jobTotal: number;
+  jobTotalSum: number;
 }> {
   const now = Date.now();
   const cutoff = now - windowMs;
@@ -126,7 +128,11 @@ export async function getErrorStats(
     namespace: "jobFailure",
     bounds,
   });
-  return { runErrors, runTotal, jobErrors, jobTotal };
+  const jobTotalSum = await statsAggregate.sum(ctx, {
+    namespace: "jobTotal",
+    bounds,
+  });
+  return { runErrors, runTotal, jobErrors, jobTotal, jobTotalSum };
 }
 
 const STATS_BTREE_NODE_SIZE = 16;

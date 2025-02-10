@@ -15,8 +15,9 @@ import {
 const idempotentWorkpool = new IdempotentWorkpool(
   components.idempotentWorkpool,
   {
-    maxParallelism: 40,
-    logLevel: "DEBUG",
+    //    maxParallelism: 40,
+    maxParallelism: 50,
+    //logLevel: "DEBUG",
   }
 );
 
@@ -83,7 +84,7 @@ export const kickoffMyAction = mutation({
   },
 });
 
-const EXAMPLE_RUNS = 1500;
+const EXAMPLE_RUNS = 500;
 export const runMany = internalAction({
   args: {},
   handler: async (ctx) => {
@@ -126,6 +127,18 @@ export const runSlowFailBatch = internalAction({
       await ctx.runMutation(api.example.kickoffMyAction, {
         action: "fail always",
         initialBackoffMs: 90000,
+      });
+    }
+  },
+});
+
+// Happy path.
+export const runHappyPath = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    for (let i = 0; i < 300; i++) {
+      await ctx.runMutation(api.example.kickoffMyAction, {
+        action: "succeed",
       });
     }
   },

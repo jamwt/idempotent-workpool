@@ -2,15 +2,24 @@ import { action, internalQuery, mutation, query } from "./_generated/server.js";
 import { Infer, v } from "convex/values";
 import { Options, options } from "./schema.js";
 import { createLogger, getDefaultLogLevel } from "./logger.js";
-import { enqueueCancellation, enqueueIncoming, fromWheelSegment } from "./lib.js";
+import {
+  enqueueCancellation,
+  enqueueIncoming,
+  fromWheelSegment,
+} from "./lib.js";
 import { getErrorStats } from "./stats.js";
 import { api, internal } from "./_generated/api.js";
 
 const MAX_MAX_PARALLELISM = 100;
 
 function validateOptions(options: Options) {
-  if (options.maxParallelism <= 0 || options.maxParallelism > MAX_MAX_PARALLELISM) {
-    throw new Error(`maxParallelism must be between 1 and ${MAX_MAX_PARALLELISM}`);
+  if (
+    options.maxParallelism <= 0 ||
+    options.maxParallelism > MAX_MAX_PARALLELISM
+  ) {
+    throw new Error(
+      `maxParallelism must be between 1 and ${MAX_MAX_PARALLELISM}`
+    );
   }
   if (options.initialBackoffMs < 25) {
     throw new Error("initialBackoffMs must be >= 25");
@@ -21,7 +30,12 @@ function validateOptions(options: Options) {
   if (options.maxRetries < 0) {
     throw new Error("maxRetries must be >= 0");
   }
-  if (options.logLevel !== "DEBUG" && options.logLevel !== "INFO" && options.logLevel !== "WARN" && options.logLevel !== "ERROR") {
+  if (
+    options.logLevel !== "DEBUG" &&
+    options.logLevel !== "INFO" &&
+    options.logLevel !== "WARN" &&
+    options.logLevel !== "ERROR"
+  ) {
     throw new Error("logLevel must be one of: DEBUG, INFO, WARN, ERROR");
   }
 }
@@ -40,6 +54,15 @@ export const start = mutation({
       options: args.options,
       handle: args.functionHandle,
       arguments: args.functionArgs,
+    });
+    logger.event("job-start", {
+      functionHandle: args.functionHandle,
+      jobId: id,
+      options: {
+        base: args.options.base,
+        initialBackoffMs: args.options.initialBackoffMs,
+        maxRetries: args.options.maxRetries,
+      },
     });
     return id as string;
   },
@@ -71,7 +94,7 @@ export const StatsValidator = v.object({
   /**
    * Time in milliseconds since the oldest pending run was created
    */
-  oldestPending: v.number(),
+  oldestPendingMs: v.number(),
 
   /**
    *
@@ -89,6 +112,11 @@ export const StatsValidator = v.object({
    * Calculated from the last ${SAMPLE_SIZE} completed runs
    */
   recentPermanentFailureRate: v.number(),
+
+  /**
+   * Average time taken to complete jobs in the recent sample.
+   */
+  recentJobAverageMs: v.number(),
 });
 export type Stats = Infer<typeof StatsValidator>;
 
@@ -100,10 +128,8 @@ export const stats = query({
   },
   returns: StatsValidator,
   handler: async (ctx, args) => {
-    const { runErrors, runTotal, jobErrors, jobTotal } = await getErrorStats(
-      ctx,
-      args.statsWindowMs ?? DEFAULT_STATS_WINDOW_MS
-    );
+    const { runErrors, runTotal, jobErrors, jobTotal, jobTotalSum } =
+      await getErrorStats(ctx, args.statsWindowMs ?? DEFAULT_STATS_WINDOW_MS);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const numIncoming = await (ctx.db.query("incoming") as any).count();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,7 +147,8 @@ export const stats = query({
       recentExecutions: runTotal,
       recentErrorRate: runTotal === 0 ? 0 : runErrors / runTotal,
       recentPermanentFailureRate: jobTotal === 0 ? 0 : jobErrors / jobTotal,
-      oldestPending: oldestCreated ? now - oldestCreated : 0,
+      recentJobAverageMs: jobTotalSum === 0 ? 0 : jobTotalSum / jobTotal,
+      oldestPendingMs: oldestCreated ? now - oldestCreated : 0,
     };
   },
 });

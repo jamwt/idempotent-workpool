@@ -66,10 +66,11 @@ export type Mounts = {
       "public",
       { statsWindowMs?: number },
       {
-        oldestPending: number;
+        oldestPendingMs: number;
         pending: number;
         recentErrorRate: number;
         recentExecutions: number;
+        recentJobAverageMs: number;
         recentPermanentFailureRate: number;
       }
     >;

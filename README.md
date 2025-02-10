@@ -114,14 +114,14 @@ const idempotentWorkpool = new IdempotentWorkpool(
     maxParallelism: 10,
     initialBackoffMs: 10000,
     base: 10,
-    maxFailures: 4,
+    maxRetries: 4,
   }
 );
 ```
 
 - `initialBackoffMs` is the initial delay after a failure before retrying (default: 250).
 - `base` is the base for the exponential backoff (default: 2).
-- `maxFailures` is the maximum number of times to retry the action (default: 4).
+- `maxRetries` is the maximum number of times to retry the action (default: 4).
 
 ## API
 
@@ -164,7 +164,7 @@ export const kickoffExampleAction = action(async (ctx) => {
     {
       initialBackoffMs: 125,
       base: 2.71,
-      maxFailures: 3,
+      maxRetries: 3,
     }
   );
 });
@@ -215,7 +215,7 @@ export const kickoffExampleAction = action(async (ctx) => {
   const runId = await idempotentWorkpool.run(
     ctx,
     internal.index.exampleAction,
-    { foo: "bar" },
+    { foo: "bar" }
   );
   while (true) {
     const status = await idempotentWorkpool.status(ctx, runId);
@@ -230,6 +230,16 @@ export const kickoffExampleAction = action(async (ctx) => {
 });
 ```
 
+The `status` method returns a `JobStatus` object, which contains information about the run's status:
+
+- `{ kind: "enqueued" }` - The run is currently enqueued and waiting to be initially scheduled.
+- `{ kind: "scheduled", retries: number, nextRun: number }` - The run is scheduled to run in the future.
+- `{ kind: "running", retries: number }` - The run is currently executing.
+- `{ kind: "canceled" }` - The run was canceled, and will be flushed soon.
+- `{ kind: "unknown" }` - The pool does not know about this run. Either it was never enqueued,
+  or it has been completed and cleaned up. The pool does not retain any information about completed
+  runs. Use the `onComplete` callback to handle (and potentially store) the run's result.
+
 ### Canceling a run
 
 You can cancel a run using the `cancel` method.
@@ -239,7 +249,7 @@ export const kickoffExampleAction = action(async (ctx) => {
   const runId = await idempotentWorkpool.run(
     ctx,
     internal.index.exampleAction,
-    { foo: "bar" },
+    { foo: "bar" }
   );
   await new Promise((resolve) => setTimeout(resolve, 1000));
   await idempotentWorkpool.cancel(ctx, runId);
@@ -247,38 +257,8 @@ export const kickoffExampleAction = action(async (ctx) => {
 ```
 
 Runs that are currently executing will be canceled best effort, so they
-may still continue to execute. A succcesful call to `cancel`, however,
-does guarantee that subsequent `status` calls will indicate cancelation.
-
-### Cleaning up completed runs
-
-Runs take up space in the database, since they store their return values. After
-a run completes, you can immediately clean up its storage by using `idempotentWorkpool.cleanup(ctx, runId)`.
-The system will automatically cleanup completed runs after 7 days.
-
-```ts
-export const kickoffExampleAction = action(async (ctx) => {
-  const runId = await idempotentWorkpool.run(
-    ctx,
-    internal.index.exampleAction,
-    { foo: "bar" },
-  );
-  try {
-    while (true) {
-      const status = await idempotentWorkpool.status(ctx, runId);
-      if (status.type === "inProgress") {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        continue;
-      } else {
-        console.log("Run completed with result:", status.result);
-        break;
-      }
-    }
-  } finally {
-    await idempotentWorkpool.cleanup(ctx, runId);
-  }
-});
-```
+may still continue to execute. A cancellation request may take a few seconds to
+propagate to the pool manager if the pool is busy.
 
 ## Logging
 
@@ -324,7 +304,8 @@ It defaults to 5 minutes.
 
 ## History
 
-The Idempotent Workpool component is heavily based on
-[the Convex Action Retrier component](https://github.com/get-convex/action-retrier).
+The Idempotent Workpool component is heavily based on ideas from
+[the Convex Action Retrier component](https://github.com/get-convex/action-retrier)
+and [the Convex Workpool component](https://github.com/get-convex/workpool).
 
 <!-- END: Include on https://convex.dev/components -->

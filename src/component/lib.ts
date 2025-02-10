@@ -27,7 +27,7 @@ function toWheelSegment(ms: number) {
   return Math.floor(ms / WHEEL_SEGMENT_MS);
 }
 
-function fromWheelSegment(segment: number) {
+export function fromWheelSegment(segment: number) {
   return segment * WHEEL_SEGMENT_MS;
 }
 

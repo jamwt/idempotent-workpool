@@ -73,6 +73,16 @@ export type Mounts = {
         recentPermanentFailureRate: number;
       }
     >;
+    status: FunctionReference<
+      "query",
+      "public",
+      { runId: string },
+      {
+        kind: "enqueued" | "scheduled" | "running" | "canceled" | "unknown";
+        nextRun?: number;
+        retries?: number;
+      }
+    >;
   };
 };
 // For now fullApiWithMounts is only fullApi which provides

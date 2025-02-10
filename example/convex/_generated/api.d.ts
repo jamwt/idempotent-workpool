@@ -77,6 +77,16 @@ export declare const components: {
           recentPermanentFailureRate: number;
         }
       >;
+      status: FunctionReference<
+        "query",
+        "internal",
+        { runId: string },
+        {
+          kind: "enqueued" | "scheduled" | "running" | "canceled" | "unknown";
+          nextRun?: number;
+          retries?: number;
+        }
+      >;
     };
   };
 };

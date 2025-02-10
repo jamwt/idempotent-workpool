@@ -2,7 +2,7 @@ import { action, internalQuery, mutation, query } from "./_generated/server.js";
 import { Infer, v } from "convex/values";
 import { options } from "./schema.js";
 import { createLogger, getDefaultLogLevel } from "./logger.js";
-import { enqueueCancellation, enqueueIncoming } from "./lib.js";
+import { enqueueCancellation, enqueueIncoming, fromWheelSegment } from "./lib.js";
 import { getErrorStats } from "./stats.js";
 import { api, internal } from "./_generated/api.js";
 
@@ -105,32 +105,6 @@ export const stats = query({
   },
 });
 
-// export const reset = internalAction({
-//   args: {},
-//   handler: async (ctx) => {
-//     let deleted;
-//     do {
-//       deleted = await ctx.runMutation(internal.public.deletePage, {});
-//       console.log(`Deleted ${deleted} runs`);
-//     } while (deleted > 0);
-
-//     // Reset all components.
-//     await ctx.runMutation(internal.utils.clearErrorStats);
-//     await ctx.runMutation(internal.heartbeat.resetRegistry);
-//   },
-// });
-
-// export const deletePage = internalMutation({
-//   args: {},
-//   handler: async (ctx, args) => {
-//     const runs = await ctx.db.query("runs").take(100);
-//     for (const run of runs) {
-//       await ctx.db.delete(run._id);
-//     }
-//     return runs.length;
-//   },
-// });
-
 export const cancelAll = action({
   args: {},
   handler: async (ctx) => {
@@ -190,5 +164,75 @@ export const logStats = mutation({
       statsWindowMs: args.statsWindowMs,
     });
     createLogger("INFO").event("stats", stats);
+  },
+});
+
+const statusValidator = v.object({
+  kind: v.union(
+    v.literal("enqueued"),
+    v.literal("scheduled"),
+    v.literal("running"),
+    v.literal("canceled"),
+    v.literal("unknown")
+  ),
+  retries: v.optional(v.number()),
+  nextRun: v.optional(v.number()),
+});
+export type JobStatus = {
+  kind: "enqueued" | "scheduled" | "running" | "canceled" | "unknown";
+  retries?: number;
+  nextRun?: number;
+};
+
+export const status = query({
+  args: { runId: v.string() },
+  returns: statusValidator,
+  handler: async (ctx, args): Promise<JobStatus> => {
+    // First, check incoming.
+    const id = ctx.db.normalizeId("incoming", args.runId);
+    if (!id) {
+      throw new Error("Unknown run id");
+    }
+    const incoming = await ctx.db.get(id);
+    if (incoming) {
+      return { kind: "enqueued" };
+    }
+    // Next, check committed.
+    const committed = await ctx.db
+      .query("committed")
+      .withIndex("by_incoming", (q) =>
+        q.eq("canceled", false).eq("incomingId", id)
+      )
+      .first();
+    if (committed) {
+      const running = await ctx.db
+        .query("running")
+        .withIndex("by_job", (q) => q.eq("job", committed._id))
+        .first();
+      if (running) {
+        return { kind: "running", retries: committed.retries };
+      } else {
+        const wheel = await ctx.db
+          .query("wheel")
+          .withIndex("by_job", (q) => q.eq("job", committed._id))
+          .first();
+        if (!wheel) {
+          throw new Error("Invariant: Wheel not found for scheduled job?");
+        }
+        const nextRun = fromWheelSegment(wheel.segment);
+        return { kind: "scheduled", retries: committed.retries, nextRun };
+      }
+    } else {
+      const committedCanceled = await ctx.db
+        .query("committed")
+        .withIndex("by_incoming", (q) =>
+          q.eq("canceled", true).eq("incomingId", id)
+        )
+        .first();
+      if (committedCanceled) {
+        return { kind: "canceled" };
+      }
+      return { kind: "unknown" };
+    }
   },
 });

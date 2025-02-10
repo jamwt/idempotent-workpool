@@ -11,8 +11,9 @@ import { api } from "../component/_generated/api.js";
 import { v } from "convex/values";
 import { GenericId } from "convex/values";
 import { LogLevel, RunResult, runResult } from "../component/schema.js";
-import { Stats } from "../component/public.js";
+import { JobStatus, Stats } from "../component/public.js";
 import { getDefaultLogLevel } from "../component/logger.js";
+import { ActionCtx } from "../component/_generated/server.js";
 
 export type RunId = string & { __isRunId: true };
 export const RunIdValidator = v.string();
@@ -145,9 +146,9 @@ export class IdempotentWorkpool {
    *
    * @param ctx - The context object from your mutation or action.
    */
-  // async cancelAll(ctx: ActionCtx, runId: RunId) {
-  //   await ctx.runAction(this.component.public.cancelAll, {});
-  // }
+  async cancelAll(ctx: ActionCtx) {
+    await ctx.runAction(this.component.public.cancelAll, {});
+  }
 
   /**
    * Get statistics about the number of runs and their statuses.
@@ -169,6 +170,16 @@ export class IdempotentWorkpool {
     await ctx.runMutation(this.component.public.logStats, {
       statsWindowMs: this.options.statsWindowMs,
     });
+  }
+
+  /**
+   * Get the status of a run.
+   *
+   * @param ctx - The context object from your mutation or action.
+   * @param runId - The `RunId` returned from `run`.
+   */
+  async status(ctx: RunQueryCtx, runId: RunId): Promise<JobStatus> {
+    return ctx.runQuery(this.component.public.status, { runId });
   }
 }
 

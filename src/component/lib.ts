@@ -347,6 +347,9 @@ async function runOnComplete(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   result: any
 ) {
+  if (!run.options.onComplete) {
+    return;
+  }
   try {
     logger.debug(`Running onComplete handler for ${run._id}`);
     const handle = run.options.onComplete as FunctionHandle<

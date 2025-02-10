@@ -1,10 +1,30 @@
 import { action, internalQuery, mutation, query } from "./_generated/server.js";
 import { Infer, v } from "convex/values";
-import { options } from "./schema.js";
+import { Options, options } from "./schema.js";
 import { createLogger, getDefaultLogLevel } from "./logger.js";
 import { enqueueCancellation, enqueueIncoming, fromWheelSegment } from "./lib.js";
 import { getErrorStats } from "./stats.js";
 import { api, internal } from "./_generated/api.js";
+
+const MAX_MAX_PARALLELISM = 100;
+
+function validateOptions(options: Options) {
+  if (options.maxParallelism <= 0 || options.maxParallelism > MAX_MAX_PARALLELISM) {
+    throw new Error(`maxParallelism must be between 1 and ${MAX_MAX_PARALLELISM}`);
+  }
+  if (options.initialBackoffMs < 25) {
+    throw new Error("initialBackoffMs must be >= 25");
+  }
+  if (options.base < 1) {
+    throw new Error("base must be >= 1");
+  }
+  if (options.maxRetries < 0) {
+    throw new Error("maxRetries must be >= 0");
+  }
+  if (options.logLevel !== "DEBUG" && options.logLevel !== "INFO" && options.logLevel !== "WARN" && options.logLevel !== "ERROR") {
+    throw new Error("logLevel must be one of: DEBUG, INFO, WARN, ERROR");
+  }
+}
 
 export const start = mutation({
   args: {
@@ -14,6 +34,7 @@ export const start = mutation({
   },
   returns: v.string(),
   handler: async (ctx, args) => {
+    validateOptions(args.options);
     const logger = createLogger(args.options.logLevel);
     const id = await enqueueIncoming(logger, ctx, {
       options: args.options,

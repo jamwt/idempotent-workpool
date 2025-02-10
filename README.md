@@ -272,6 +272,15 @@ npx convex env set IDEMPOTENT_WORKPOOL_LOG_LEVEL DEBUG
 
 The default log level is `INFO`, but you can also set it to `ERROR` for even fewer logs.
 
+## Performance and overhead
+
+The idempotent workpool is designed to be lightweight and to minimize overhead.
+However, Convex does not yet support a table triggering mechanism, so the chattiness
+of communication between jobs and the pool manager is non-zero.
+
+As Convex ships more optimized system primitives, this implementation will be updated
+to reduce the overhead of the management of the pool accordingly.
+
 ## Telemetry
 
 The `stats()` method returns a `Stats` object containing information about the

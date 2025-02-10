@@ -54,7 +54,9 @@ export declare const components: {
         {
           functionArgs: any;
           functionHandle: string;
+          functionName: string;
           options: {
+            annotation?: string;
             base: number;
             initialBackoffMs: number;
             logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";

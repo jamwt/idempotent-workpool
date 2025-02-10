@@ -276,6 +276,7 @@ export async function handleFinalizations(
       );
       logger.event("job-end", {
         jobId: committed.incomingId,
+        annotation: committed.options.annotation,
         result: "success",
         retries: committed.retries,
         durationMs: f.endedAt - committed.enqueuedAt,
@@ -296,6 +297,7 @@ export async function handleFinalizations(
         );
         logger.event("job-end", {
           jobId: committed.incomingId,
+          annotation: committed.options.annotation,
           result: "failed",
           retries: committed.retries,
           durationMs: f.endedAt - committed.enqueuedAt,
@@ -313,6 +315,7 @@ export async function handleFinalizations(
         );
         logger.event("job-end", {
           jobId: committed.incomingId,
+          annotation: committed.options.annotation,
           result: "canceled",
           durationMs: f.endedAt - committed.enqueuedAt,
         });
@@ -327,6 +330,7 @@ export async function handleFinalizations(
         await updateErrorStats(ctx, committed._id, committed.retries, true);
         logger.event("job-retry", {
           jobId: committed.incomingId,
+          annotation: committed.options.annotation,
           retries: committed.retries,
           durationMs: f.endedAt - committed.enqueuedAt,
           retryInMs,

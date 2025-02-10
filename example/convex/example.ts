@@ -78,6 +78,7 @@ export const kickoffMyAction = mutation({
         maxRetries: 2,
         onComplete: internal.example.completion,
         //        logLevel: "DEBUG",
+        //annotation: "Action is " + args.action,
       }
     );
     return id;

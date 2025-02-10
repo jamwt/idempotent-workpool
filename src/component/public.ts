@@ -43,6 +43,7 @@ function validateOptions(options: Options) {
 export const start = mutation({
   args: {
     functionHandle: v.string(),
+    functionName: v.string(),
     functionArgs: v.any(),
     options: v.object(options),
   },
@@ -57,6 +58,8 @@ export const start = mutation({
     });
     logger.event("job-start", {
       functionHandle: args.functionHandle,
+      functionName: args.functionName,
+      annotation: args.options.annotation,
       jobId: id,
       options: {
         base: args.options.base,

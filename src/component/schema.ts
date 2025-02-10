@@ -21,6 +21,7 @@ export const options = {
   base: v.number(),
   maxRetries: v.number(),
   onComplete: v.optional(v.string()),
+  annotation: v.optional(v.string()),
 };
 const optionsObj = v.object(options);
 export type Options = Infer<typeof optionsObj>;

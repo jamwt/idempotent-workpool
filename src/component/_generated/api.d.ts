@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as lib from "../lib.js";
 import type * as logger from "../logger.js";
 import type * as mainLoop from "../mainLoop.js";
@@ -28,6 +29,7 @@ import type {
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   lib: typeof lib;
   logger: typeof logger;
   mainLoop: typeof mainLoop;
@@ -50,7 +52,9 @@ export type Mounts = {
       {
         functionArgs: any;
         functionHandle: string;
+        functionName: string;
         options: {
+          annotation?: string;
           base: number;
           initialBackoffMs: number;
           logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";

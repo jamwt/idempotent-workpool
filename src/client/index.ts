@@ -6,6 +6,7 @@ import {
   GenericDataModel,
   GenericMutationCtx,
   GenericQueryCtx,
+  getFunctionName,
 } from "convex/server";
 import { api } from "../component/_generated/api.js";
 import { v } from "convex/values";
@@ -51,6 +52,10 @@ export type Options = BaseOptions & {
 export type RunOptions = BaseOptions & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onComplete?: FunctionReference<"mutation", any, { result: RunResult }, any>;
+  /**
+   * An annotation for the run. This will be logged for telemetry.
+   */
+  annotation?: string;
 };
 
 const DEFAULT_INITIAL_BACKOFF_MS = 250;
@@ -109,12 +114,14 @@ export class IdempotentWorkpool {
     options?: RunOptions
   ): Promise<RunId> {
     const handle = await createFunctionHandle(reference);
+    const functionName = getFunctionName(reference);
     let onComplete: string | undefined;
     if (options?.onComplete) {
       onComplete = await createFunctionHandle(options.onComplete);
     }
     const runId = await ctx.runMutation(this.component.public.start, {
       functionHandle: handle,
+      functionName,
       functionArgs: args ?? {},
       options: {
         initialBackoffMs:
@@ -124,6 +131,7 @@ export class IdempotentWorkpool {
         logLevel: this.options.logLevel,
         maxParallelism: this.options.maxParallelism,
         onComplete,
+        annotation: options?.annotation,
       },
     });
     return runId as RunId;

@@ -1,4 +1,6 @@
+import { v } from "convex/values";
 import { LogLevel } from "./schema";
+import { internalMutation } from "./_generated/server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type Logger = {
@@ -67,3 +69,22 @@ export function getDefaultLogLevel(): LogLevel {
     }
     return DEFAULT_LOG_LEVEL;
 }
+
+export const debugOverrideLogLevel = internalMutation({
+  args: {
+    level: v.union(v.literal("DEBUG"), v.literal("INFO"), v.literal("WARN"), v.literal("ERROR")),
+  },
+  handler: async (ctx, args) => {
+    const frozen = await ctx.db.query("frozenConfig").first();
+    if (frozen) {
+      await ctx.db.patch(frozen._id, {
+        config: {
+          maxParallelism: frozen.config.maxParallelism,
+          logLevel: args.level,
+        },
+      });
+    } else {
+        throw Error("No existing config to patch.");
+    }
+  },
+});

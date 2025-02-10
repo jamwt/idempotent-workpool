@@ -1,134 +1,64 @@
-# Convex Component Template
+# Convex Idempotent Workpool
 
-This is a Convex component, ready to be published on npm.
-
-To create your own component:
-
-1. Find and replace "@convex-dev/sharded-counter" with your npm package's name.
-1. Find and replace "get-convex/sharded-counter" to your component's repo.
-1. Find and replace "ShardedCounter", "shardedCounter", "sharded-counter", "sharded_counter", "sharded counter", and "Sharded Counter" to your component's name.
-1. Write code in src/component for your component.
-1. Write code in src/client for your thick client.
-1. Write example usage in example/convex/example.ts.
-1. Delete the text in this readme until `---` and flesh out the README.
-
-To develop your component run a dev process in the example project.
-
-```
-npm i
-cd example
-npm i
-npx convex dev
-```
-
-Modify the schema and index files in src/component/ to define your component.
-
-Write a client for using this component in src/client/index.ts.
-
-If you won't be adding frontend code (e.g. React components) to this
-component you can delete the following:
-
-- "prepack" and "postpack" scripts of package.json
-- "./react" exports in package.json
-- the "src/react/" directory
-- the "node10stubs.mjs" file
-
-### Component Directory structure
-
-```
-.
-├── README.md           documentation of your component
-├── package.json        component name, version number, other metadata
-├── package-lock.json   Components are like libraries, package-lock.json
-│                       is .gitignored and ignored by consumers.
-├── src
-│   ├── component/
-│   │   ├── _generated/ Files here are generated.
-│   │   ├── convex.config.ts  Name your component here and use other components
-│   │   ├── index.ts    Define functions here and in new files in this directory
-│   │   └── schema.ts   schema specific to this component
-│   ├── client/index.ts "Thick" client code goes here.
-│   └── react/          Code intended to be used on the frontend goes here.
-│       │               Your are free to delete this if this component
-│       │               does not provide code.
-│       └── index.ts
-├── example/            example Convex app that uses this component
-│   │                   Run 'npx convex dev' from here during development.
-│   ├── package.json.ts Thick client code goes here.
-│   └── convex/
-│       ├── _generated/
-│       ├── convex.config.ts  Imports and uses this component
-│       ├── myFunctions.ts    Functions that use the component
-│       ├── schema.ts         Example app schema
-│       └── tsconfig.json
-│  
-├── dist/               Publishing artifacts will be created here.
-├── commonjs.json       Used during build by TypeScript.
-├── esm.json            Used during build by TypeScript.
-├── node10stubs.mjs     Script used during build for compatibility
-│                       with the Metro bundler used with React Native.
-├── eslint.config.mjs   Recommended lints for writing a component.
-│                       Feel free to customize it.
-└── tsconfig.json       Recommended tsconfig.json for writing a component.
-                        Some settings can be customized, some are required.
-```
-
-### Structure of a Convex Component
-
-A Convex components exposes the entry point convex.config.js. The on-disk
-location of this file must be a directory containing implementation files. These
-files should be compiled to ESM.
-The package.json should contain `"type": "module"` and the tsconfig.json should
-contain `"moduleResolution": "Bundler"` or `"Node16"` in order to import other
-component definitions.
-
-In addition to convex.config.js, a component typically exposes a client that
-wraps communication with the component for use in the Convex
-environment is typically exposed as a named export `MyComponentClient` or
-`MyComponent` imported from the root package.
-
-```
-import { MyComponentClient } from "my-convex-component";
-```
-
-When frontend code is included it is typically published at a subpath:
-
-```
-import { helper } from "my-convex-component/react";
-import { FrontendReactComponent } from "my-convex-component/react";
-```
-
-Frontend code should be compiled as CommonJS code as well as ESM and make use of
-subpackage stubs (see next section).
-
-If you do include frontend components, prefer peer dependencies to avoid using
-more than one version of e.g. React.
-
-### Support for Node10 module resolution
-
-The [Metro](https://reactnative.dev/docs/metro) bundler for React Native
-requires setting
-[`resolver.unstable_enablePackageExports`](https://metrobundler.dev/docs/package-exports/)
-in order to import code that lives in `dist/esm/react.js` from a path like
-`my-convex-component/react`.
-
-Authors of Convex component that provide frontend components are encouraged to
-support these legacy "Node10-style" module resolution algorithms by generating
-stub directories with special pre- and post-pack scripts.
-
----
-
-# Convex Sharded Counter Component
-
-[![npm version](https://badge.fury.io/js/@convex-dev%2Fsharded-counter.svg)](https://badge.fury.io/js/@convex-dev%2Fsharded-counter)
+[![npm version](https://badge.fury.io/js/@convex-dev%2Fidempotent-workpool.svg)](https://badge.fury.io/js/@convex-dev%2Fidempotent-workpool)
 
 <!-- START: Include on https://convex.dev/components -->
 
-- [ ] What is some compelling syntax as a hook?
-- [ ] Why should you use this component?
-- [ ] Links to Stack / other resources?
+Actions can sometimes fail due to network errors, server restarts, or issues with a
+3rd party API, so it's often useful to retry them. The Idempotent Workpool component
+provides a simple way to run idempotent actions until completion, with configurable
+retry logic, while allowing you to limit how many of them run in parallel.
 
-Found a bug? Feature request? [File it here](https://github.com/get-convex/sharded-counter/issues).
+```ts
+import { IdempotentWorkpool } from "@convex-dev/idempotent-workpool";
+import { components } from "./convex/_generated/server";
+
+// Create a new idempotent workpool with a max parallelism of 10.
+const idempotentWorkpool = new IdempotentWorkpool(
+  components.idempotentWorkpool,
+  {
+    maxParallelism: 10,
+  }
+);
+
+// `idempotentWorkpool.run` will automatically retry your action upon temporary failure.
+await idempotentWorkpool.run(ctx, internal.module.myAction, { arg: 123 });
+```
+
+### Idempotency?
+
+Idempotent actions are actions that can be run multiple times safely. This typically
+means they don't cause any side effects that would be a problem if executed twice or more.
+
+As an example of an unsafe, non-idempotent action, consider an action that charges
+a user's credit card without providing a unique transaction id to the payment
+processor. The first time the action is run, imagine that the API call succeeds to the
+payment provider, but then the action throws an exception before the transaction is marked
+finished in our Convex database. If the action is run twice, the user may be
+double charged for the transaction!
+
+If we alter this action to provide a consistent transaction id to the payment provider, they
+can simply NOOP the second payment attempt. The this makes the action idempotent, and
+it can safely be retried.
+
+### Workpool?
+
+Imagine that the payment processor is a 3rd party API, and they temporarily have an
+outage. Now imagine you implement your own action retrying logic for your busy app.
+You'll find very quickly that your entire backend is overwhelmed with retrying actions.
+This could bog down live traffic with background work, and/or cause you to exceed
+rate limits with the payment provider.
+
+Creating an upper bound on how much work will be done in parallel is a good way to
+mitigate this risk. Actions that are currently backing off awaiting retry will not tie
+up a thread in the workpool.
+
+### In summary
+
+If you're creating complex workflows with many steps involving 3rd party APIs:
+
+1.  You should ensure that each step is an idempotent Convex action.
+2.  You should use this component to manage these actions so it all just works!
 
 ## Pre-requisite: Convex
 
@@ -140,36 +70,261 @@ Run `npm create convex` or follow any of the [quickstarts](https://docs.convex.d
 
 ## Installation
 
-Install the component package:
+First, add `@convex-dev/idempotent-workpool` as an NPM dependency:
 
-```ts
-npm install @convex-dev/sharded-counter
+```sh
+npm install @convex-dev/idempotent-workpool
 ```
 
-Create a `convex.config.ts` file in your app's `convex/` folder and install the component by calling `use`:
+Then, install the component into your Convex project within the `convex/convex.config.ts` configuration file:
 
 ```ts
 // convex/convex.config.ts
 import { defineApp } from "convex/server";
-import shardedCounter from "@convex-dev/sharded-counter/convex.config";
+import idempotentWorkpool from "@convex-dev/idempotent-workpool/convex.config";
 
 const app = defineApp();
-app.use(shardedCounter);
-
+app.use(idempotentWorkpool);
 export default app;
 ```
 
-## Usage
+Finally, create a new `IdempotentWorkpool` within your Convex project, and point it to the installed component:
 
 ```ts
+// convex/index.ts
+import { IdempotentWorkpool } from "@convex-dev/idempotent-workpool";
 import { components } from "./_generated/api";
-import { ShardedCounter } from "@convex-dev/sharded-counter";
 
-const counter = new Counter(components.counter, {
-  ...options,
+// Create a new idempotent workpool with a max parallelism of 10.
+// This argument is required.
+export const idempotentWorkpool = new IdempotentWorkpool(
+  components.idempotentWorkpool,
+  {
+    maxParallelism: 10,
+  }
+);
+```
+
+You can optionally configure the idempotent workpool's backoff behavior in the `IdempotentWorkpool` constructor.
+
+```ts
+const idempotentWorkpool = new IdempotentWorkpool(
+  components.idempotentWorkpool,
+  {
+    maxParallelism: 10,
+    initialBackoffMs: 10000,
+    base: 10,
+    maxFailures: 4,
+  }
+);
+```
+
+- `initialBackoffMs` is the initial delay after a failure before retrying (default: 250).
+- `base` is the base for the exponential backoff (default: 2).
+- `maxFailures` is the maximum number of times to retry the action (default: 4).
+
+## API
+
+### Starting a run
+
+After installing the component, use the `run` method from either a mutation or action to kick off an action.
+
+```ts
+export const kickoffExampleAction = mutation({
+  handler: async (ctx) => {
+    const runId = await idempotentWorkpool.run(
+      ctx,
+      internal.index.exampleAction,
+      {
+        foo: "bar",
+      }
+    );
+    // ... optionally persist or pass along the runId
+  },
+});
+
+export const exampleAction = internalAction({
+  args: { foo: v.string() },
+  handler: async (ctx, args) => {
+    return operationThatMightFail(args);
+  },
 });
 ```
 
-See more example usage in [example.ts](./example/convex/example.ts).
+The return value of `idempotentWorkpool.run` is not the result of the action, but rather an ID that you can use to query its status or cancel it. The action's return value is saved along with the status, when it succeeds.
+
+You can optionally specify overrides to the backoff parameters in an options argument.
+
+```ts
+export const kickoffExampleAction = action(async (ctx) => {
+  const runId = await idempotentWorkpool.run(
+    ctx,
+    internal.index.exampleAction,
+    { foo: "bar" },
+    {
+      initialBackoffMs: 125,
+      base: 2.71,
+      maxFailures: 3,
+    }
+  );
+});
+```
+
+You can specify an `onComplete` mutation callback in the options argument as well. This mutation is guaranteed to
+eventually run exactly once.
+
+```ts
+// convex/index.ts
+
+import { runResultValidator } from "@convex-dev/idempotent-workpool";
+
+export const kickoffExampleAction = action(async (ctx) => {
+  const runId = await idempotentWorkpool.run(
+    ctx,
+    internal.index.exampleAction,
+    { foo: "bar" },
+    {
+      onComplete: internal.index.exampleCallback,
+    }
+  );
+});
+
+export const exampleCallback = internalMutation({
+  args: { result: runResultValidator },
+  handler: async (ctx, args) => {
+    if (args.result.type === "success") {
+      console.log(
+        "Action succeeded with return value:",
+        args.result.returnValue
+      );
+    } else if (args.result.type === "failed") {
+      console.log("Action failed with error:", args.result.error);
+    } else if (args.result.type === "canceled") {
+      console.log("Action was canceled.");
+    }
+  },
+});
+```
+
+### Run status
+
+The `run` method returns a `RunId`, which can then be used for querying a run's status.
+
+```ts
+export const kickoffExampleAction = action(async (ctx) => {
+  const runId = await idempotentWorkpool.run(
+    ctx,
+    internal.index.exampleAction,
+    { foo: "bar" },
+  );
+  while (true) {
+    const status = await idempotentWorkpool.status(ctx, runId);
+    if (status.type === "inProgress") {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      continue;
+    } else {
+      console.log("Run completed with result:", status.result);
+      break;
+    }
+  }
+});
+```
+
+### Canceling a run
+
+You can cancel a run using the `cancel` method.
+
+```ts
+export const kickoffExampleAction = action(async (ctx) => {
+  const runId = await idempotentWorkpool.run(
+    ctx,
+    internal.index.exampleAction,
+    { foo: "bar" },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await idempotentWorkpool.cancel(ctx, runId);
+});
+```
+
+Runs that are currently executing will be canceled best effort, so they
+may still continue to execute. A succcesful call to `cancel`, however,
+does guarantee that subsequent `status` calls will indicate cancelation.
+
+### Cleaning up completed runs
+
+Runs take up space in the database, since they store their return values. After
+a run completes, you can immediately clean up its storage by using `idempotentWorkpool.cleanup(ctx, runId)`.
+The system will automatically cleanup completed runs after 7 days.
+
+```ts
+export const kickoffExampleAction = action(async (ctx) => {
+  const runId = await idempotentWorkpool.run(
+    ctx,
+    internal.index.exampleAction,
+    { foo: "bar" },
+  );
+  try {
+    while (true) {
+      const status = await idempotentWorkpool.status(ctx, runId);
+      if (status.type === "inProgress") {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      } else {
+        console.log("Run completed with result:", status.result);
+        break;
+      }
+    }
+  } finally {
+    await idempotentWorkpool.cleanup(ctx, runId);
+  }
+});
+```
+
+## Logging
+
+You can set the `IDEMPOTENT_WORKPOOL_LOG_LEVEL` environment variable to `DEBUG`
+to have the idempotent workpool log out more of its internal information,
+which you can then view on the Convex dashboard.
+
+```sh
+npx convex env set IDEMPOTENT_WORKPOOL_LOG_LEVEL DEBUG
+```
+
+The default log level is `INFO`, but you can also set it to `ERROR` for even fewer logs.
+
+## Telemetry
+
+The `stats()` method returns a `Stats` object containing information about the
+idempotent workpool's current state.
+
+```ts
+const stats = await idempotentWorkpool.stats(ctx);
+```
+
+Fields:
+
+- `pending`: Number of runs currently in the pending state
+- `oldestPending`: Time in milliseconds since the oldest pending run was created
+- `recentExecutions`: Number of recent action executions
+- `recentErrorRate`: Ratio (0-1) of transient errors and retries in recent executions
+- `recentPermanentFailureRate`: Ratio (0-1) of permanent failures in recent executions
+
+You can also log stats to the console in a structured JSON format
+using the `logStats` method:
+
+```ts
+await idempotentWorkpool.logStats(ctx);
+```
+
+If you generate these log events regularly from an application cron, they can be
+ingested by datadog, axiom, or some other service for monitoring and alerting.
+
+Recency is determined by the `statsWindowMs` option in the `IdempotentWorkpool` constructor.
+It defaults to 5 minutes.
+
+## History
+
+The Idempotent Workpool component is heavily based on
+[the Convex Action Retrier component](https://github.com/get-convex/action-retrier).
 
 <!-- END: Include on https://convex.dev/components -->

@@ -56,10 +56,16 @@ export const myAction = internalAction({
 
 export const completion = internalMutation({
   args: {
+    context: v.number(),
     result: runResultValidator,
   },
   handler: async (ctx, args) => {
-    console.log(args.result);
+    console.log(
+      args.result,
+      "Got Context back -> ",
+      args.context,
+      Date.now() - args.context
+    );
   },
 });
 
@@ -77,6 +83,7 @@ export const kickoffMyAction = mutation({
         base: 2,
         maxRetries: 2,
         onComplete: internal.example.completion,
+        context: Date.now(),
         //        logLevel: "DEBUG",
         //annotation: "Action is " + args.action,
       }
@@ -141,6 +148,19 @@ export const runHappyPath = internalAction({
       await ctx.runMutation(api.example.kickoffMyAction, {
         action: "succeed",
       });
+    }
+  },
+});
+
+// Happy path.
+export const runHappyPathSlow = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    for (let i = 0; i < 10; i++) {
+      await ctx.runMutation(api.example.kickoffMyAction, {
+        action: "succeed",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   },
 });

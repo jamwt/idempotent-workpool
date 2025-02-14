@@ -22,6 +22,8 @@ export const options = {
   maxRetries: v.number(),
   onComplete: v.optional(v.string()),
   annotation: v.optional(v.string()),
+  initialDelayMs: v.number(),
+  context: v.optional(v.any()),
 };
 const optionsObj = v.object(options);
 export type Options = Infer<typeof optionsObj>;

@@ -58,7 +58,9 @@ export declare const components: {
           options: {
             annotation?: string;
             base: number;
+            context?: any;
             initialBackoffMs: number;
+            initialDelayMs: number;
             logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";
             maxParallelism: number;
             maxRetries: number;

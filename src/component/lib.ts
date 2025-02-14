@@ -43,6 +43,8 @@ async function processIncoming(
   const incoming = await ctx.db.query("incoming").take(QUEUE_WINDOW);
 
   for (const job of incoming) {
+    const desiredRunTime = job._creationTime + job.options.initialDelayMs;
+
     // Commit to run.
     const committed = await ctx.db.insert("committed", {
       handle: job.handle,
@@ -56,10 +58,9 @@ async function processIncoming(
     logger.debug(
       `Incoming job ${job._id} processed (now mapped to ${committed})`
     );
-    // Scheduled ASAP.
     await ctx.db.insert("wheel", {
       job: committed,
-      segment: nowWheelSegment(),
+      segment: toWheelSegment(desiredRunTime),
     });
 
     // Remove from incoming.
@@ -359,7 +360,10 @@ async function runOnComplete(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       any
     >;
-    await ctx.runMutation(handle, { result: result });
+    await ctx.runMutation(handle, {
+      context: run.options.context,
+      result: result,
+    });
     logger.debug(`Finished running onComplete handler for ${run._id}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {

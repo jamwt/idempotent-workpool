@@ -51,7 +51,17 @@ export type Options = BaseOptions & {
 
 export type RunOptions = BaseOptions & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onComplete?: FunctionReference<"mutation", any, { result: RunResult }, any>;
+  onComplete?: FunctionReference<"mutation", any, { context?: any, result: RunResult }, any>;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context?: any;
+
+
+  /**
+   * The initial delay before the first run. Defaults to 0.
+   */
+  initialDelayMs?: number;
+
   /**
    * An annotation for the run. This will be logged for telemetry.
    */
@@ -132,6 +142,8 @@ export class IdempotentWorkpool {
         maxParallelism: this.options.maxParallelism,
         onComplete,
         annotation: options?.annotation,
+        initialDelayMs: options?.initialDelayMs ?? 0,
+        context: options?.context,
       },
     });
     return runId as RunId;

@@ -73,7 +73,7 @@ export const completion = internalMutation({
 export const kickoffMyAction = mutation({
   args: { action, initialBackoffMs: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const id: any = await idempotentWorkpool.run(
+    const id: RunId = await idempotentWorkpool.run(
       ctx,
       internal.example.myAction,
       {
@@ -99,7 +99,7 @@ export const runMany = internalAction({
   handler: async (ctx) => {
     const cancelations = [];
     for (let i = 0; i < EXAMPLE_RUNS; i++) {
-      const id: string = await ctx.runMutation(api.example.kickoffMyAction, {
+      const id: RunId = await ctx.runMutation(api.example.kickoffMyAction, {
         action: "fail randomly",
       });
       if (Math.random() < 0.05) {

@@ -47,7 +47,7 @@ export const start = mutation({
     functionArgs: v.any(),
     options: v.object(options),
   },
-  returns: v.string(),
+  returns: v.id("incoming"),
   handler: async (ctx, args) => {
     validateOptions(args.options);
     const logger = createLogger(args.options.logLevel);
@@ -67,22 +67,18 @@ export const start = mutation({
         maxRetries: args.options.maxRetries,
       },
     });
-    return id as string;
+    return id;
   },
 });
 
 export const cancel = mutation({
   args: {
-    runId: v.string(),
+    runId: v.id("incoming"),
   },
   handler: async (ctx, args) => {
     const logger = createLogger(getDefaultLogLevel());
-    const id = ctx.db.normalizeId("incoming", args.runId);
-    if (!id) {
-      return false;
-    }
     await enqueueCancellation(logger, ctx, {
-      job: id,
+      job: args.runId,
     });
     return true;
   },
@@ -236,15 +232,11 @@ export type JobStatus = {
 };
 
 export const status = query({
-  args: { runId: v.string() },
+  args: { runId: v.id("incoming") },
   returns: statusValidator,
   handler: async (ctx, args): Promise<JobStatus> => {
     // First, check incoming.
-    const id = ctx.db.normalizeId("incoming", args.runId);
-    if (!id) {
-      throw new Error("Unknown run id");
-    }
-    const incoming = await ctx.db.get(id);
+    const incoming = await ctx.db.get(args.runId);
     if (incoming) {
       return { kind: "enqueued" };
     }
@@ -252,7 +244,7 @@ export const status = query({
     const committed = await ctx.db
       .query("committed")
       .withIndex("by_incoming", (q) =>
-        q.eq("canceled", false).eq("incomingId", id)
+        q.eq("canceled", false).eq("incomingId", args.runId)
       )
       .first();
     if (committed) {
@@ -277,7 +269,7 @@ export const status = query({
       const committedCanceled = await ctx.db
         .query("committed")
         .withIndex("by_incoming", (q) =>
-          q.eq("canceled", true).eq("incomingId", id)
+          q.eq("canceled", true).eq("incomingId", args.runId)
         )
         .first();
       if (committedCanceled) {

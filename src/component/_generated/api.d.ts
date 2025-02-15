@@ -54,9 +54,9 @@ export type Mounts = {
         functionHandle: string;
         functionName: string;
         options: {
-          annotation?: string;
+          annotation: string | null;
           base: number;
-          context?: any;
+          context: any;
           initialBackoffMs: number;
           initialDelayMs: number;
           logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";

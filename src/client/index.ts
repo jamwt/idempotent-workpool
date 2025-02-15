@@ -85,11 +85,14 @@ const DEFAULT_INITIAL_BACKOFF_MS = 250;
 const DEFAULT_BASE = 2;
 const DEFAULT_MAX_RETRIES = 4;
 
-function defaultRunOptions(options?: RunOptions): Required<RunOptions> {
+function defaultRunOptions(
+  baseline: Required<Options>,
+  options?: RunOptions
+): Required<RunOptions> {
   return {
-    initialBackoffMs: options?.initialBackoffMs ?? DEFAULT_INITIAL_BACKOFF_MS,
-    base: options?.base ?? DEFAULT_BASE,
-    maxRetries: options?.maxRetries ?? DEFAULT_MAX_RETRIES,
+    initialBackoffMs: options?.initialBackoffMs ?? baseline.initialBackoffMs,
+    base: options?.base ?? baseline.base,
+    maxRetries: options?.maxRetries ?? baseline.maxRetries,
     onComplete: options?.onComplete ?? null,
     annotation: options?.annotation ?? null,
     initialDelayMs: options?.initialDelayMs ?? 0,
@@ -97,8 +100,11 @@ function defaultRunOptions(options?: RunOptions): Required<RunOptions> {
   };
 }
 
-function runOnceToRunOptions(options?: RunOnceOptions): Required<RunOptions> {
-  const runOptions = defaultRunOptions();
+function runOnceToRunOptions(
+  baseline: Required<Options>,
+  options?: RunOnceOptions
+): Required<RunOptions> {
+  const runOptions = defaultRunOptions(baseline);
   runOptions.onComplete = options?.onComplete ?? null;
   runOptions.context = options?.context;
   // No retries!
@@ -127,12 +133,11 @@ export class IdempotentWorkpool {
     options: Options
   ) {
     const DEFAULT_LOG_LEVEL = getDefaultLogLevel();
-    const runOptions = defaultRunOptions();
 
     this.options = {
-      initialBackoffMs: options.initialBackoffMs ?? runOptions.initialBackoffMs,
+      initialBackoffMs: options.initialBackoffMs ?? DEFAULT_INITIAL_BACKOFF_MS,
       base: options.base ?? DEFAULT_BASE,
-      maxRetries: options.maxRetries ?? runOptions.maxRetries,
+      maxRetries: options.maxRetries ?? DEFAULT_MAX_RETRIES,
       logLevel: options.logLevel ?? DEFAULT_LOG_LEVEL,
       maxParallelism: options.maxParallelism,
       statsWindowMs: options.statsWindowMs ?? 0,
@@ -166,7 +171,7 @@ export class IdempotentWorkpool {
     const handle = await createFunctionHandle(reference);
     const functionName = getFunctionName(reference);
     let onComplete: string | undefined;
-    const finalOptions = defaultRunOptions(options);
+    const finalOptions = defaultRunOptions(this.options, options);
     if (finalOptions.onComplete) {
       onComplete = await createFunctionHandle(finalOptions.onComplete);
     }
@@ -192,7 +197,7 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOptions
   ): Promise<RunId> {
-    const finalOptions = defaultRunOptions(options);
+    const finalOptions = defaultRunOptions(this.options, options);
     finalOptions.initialDelayMs = delayMs;
     return (await this.run(ctx, reference, args, finalOptions)) as RunId;
   }
@@ -205,7 +210,7 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOptions
   ): Promise<RunId> {
-    const finalOptions = defaultRunOptions(options);
+    const finalOptions = defaultRunOptions(this.options, options);
     const now = Date.now();
     const delayMs = Math.max(0, atMs - now);
     finalOptions.initialDelayMs = delayMs;
@@ -219,7 +224,7 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
-    const runOptions = runOnceToRunOptions(options);
+    const runOptions = runOnceToRunOptions(this.options, options);
     return (await this.run(ctx, reference, args, runOptions)) as RunId;
   }
 
@@ -231,7 +236,7 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
-    const runOptions = runOnceToRunOptions(options);
+    const runOptions = runOnceToRunOptions(this.options, options);
     runOptions.initialDelayMs = delayMs;
     return (await this.run(ctx, reference, args, runOptions)) as RunId;
   }
@@ -244,7 +249,7 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
-    const runOptions = runOnceToRunOptions(options);
+    const runOptions = runOnceToRunOptions(this.options, options);
     const now = Date.now();
     const delayMs = Math.max(0, atMs - now);
     runOptions.initialDelayMs = delayMs;

@@ -8,7 +8,7 @@ import { internal, components, api } from "./_generated/api";
 import {
   IdempotentWorkpool,
   RunId,
-  RunIdValidator,
+  runIdValidator,
   runResultValidator,
 } from "@convex-dev/idempotent-workpool";
 
@@ -56,6 +56,7 @@ export const myAction = internalAction({
 
 export const completion = internalMutation({
   args: {
+    runId: runIdValidator,
     context: v.number(),
     result: runResultValidator,
   },
@@ -119,7 +120,7 @@ export const runMany = internalAction({
 
 export const cancel = internalMutation({
   args: {
-    id: RunIdValidator,
+    id: runIdValidator,
   },
   handler: async (ctx, args) => {
     console.log("Cancelling", args.id);

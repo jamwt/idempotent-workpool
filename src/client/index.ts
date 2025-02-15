@@ -9,7 +9,7 @@ import {
   getFunctionName,
 } from "convex/server";
 import { api } from "../component/_generated/api.js";
-import { v } from "convex/values";
+import { v, VString } from "convex/values";
 import { GenericId } from "convex/values";
 import { LogLevel, RunResult, runResult } from "../component/schema.js";
 import { JobStatus, Stats } from "../component/public.js";
@@ -17,7 +17,7 @@ import { getDefaultLogLevel } from "../component/logger.js";
 import { ActionCtx } from "../component/_generated/server.js";
 
 export type RunId = string & { __isRunId: true };
-export const RunIdValidator = v.string();
+export const runIdValidator = v.string() as VString<RunId>;
 
 export type GlobalOptions = {
   /**

@@ -6,7 +6,7 @@ import {
   MutationCtx,
 } from "./_generated/server";
 import { FunctionHandle, WithoutSystemFields } from "convex/server";
-import { Doc, Id } from "./_generated/dataModel";
+import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { createLogger, getDefaultLogLevel, Logger } from "./logger";
 import { internal } from "./_generated/api";
 import { FrozenOptions, runResult, RunResult } from "./schema";
@@ -31,43 +31,59 @@ export function fromWheelSegment(segment: number) {
   return segment * WHEEL_SEGMENT_MS;
 }
 
+const QUEUE_WINDOW = 100;
+
+async function pullFromQueue<T extends TableNames, D extends Doc<T>>(
+  ctx: MutationCtx,
+  tableName: T,
+  window?: number
+): Promise<[D[], boolean]> {
+  const takeWindow = window ?? QUEUE_WINDOW;
+  const items = await ctx.db.query(tableName).take(takeWindow + 1);
+  const is_more = items.length > takeWindow;
+  return [items.slice(0, takeWindow), is_more];
+}
+
 // Phase 1. Incoming
-
-const QUEUE_WINDOW = 30;
-
 async function processIncoming(
   logger: Logger,
   ctx: MutationCtx
 ): Promise<boolean> {
-  // Ideally, switch to a paginated query.
-  const incoming = await ctx.db.query("incoming").take(QUEUE_WINDOW);
+  const [incoming, is_more] = await pullFromQueue(ctx, "incoming");
 
   for (const job of incoming) {
-    const desiredRunTime = job._creationTime + job.options.initialDelayMs;
-
-    // Commit to run.
-    const committed = await ctx.db.insert("committed", {
-      handle: job.handle,
-      arguments: job.arguments,
-      retries: 0,
-      incomingId: job._id,
-      enqueuedAt: job._creationTime,
-      canceled: false,
-      options: job.options,
-    });
-    logger.debug(
-      `Incoming job ${job._id} processed (now mapped to ${committed})`
-    );
-    await ctx.db.insert("wheel", {
-      job: committed,
-      segment: toWheelSegment(desiredRunTime),
-    });
-
-    // Remove from incoming.
-    await ctx.db.delete(job._id);
+    await addToCommitted(logger, ctx, job);
   }
+  return is_more;
+}
 
-  return (await ctx.db.query("incoming").first()) !== null;
+async function addToCommitted(
+  logger: Logger,
+  ctx: MutationCtx,
+  job: Doc<"incoming">
+) {
+  const desiredRunTime = job._creationTime + job.options.initialDelayMs;
+
+  // Commit to run.
+  const committed = await ctx.db.insert("committed", {
+    handle: job.handle,
+    arguments: job.arguments,
+    retries: 0,
+    incomingId: job._id,
+    enqueuedAt: job._creationTime,
+    canceled: false,
+    options: job.options,
+  });
+  logger.debug(
+    `Incoming job ${job._id} processed (now mapped to ${committed})`
+  );
+  await ctx.db.insert("wheel", {
+    job: committed,
+    segment: toWheelSegment(desiredRunTime),
+  });
+
+  // Remove from incoming.
+  await ctx.db.delete(job._id);
 }
 
 const defaultFrozenOptions: FrozenOptions = {
@@ -108,11 +124,18 @@ async function processCancellations(
   ctx: MutationCtx,
   toFinalize: WithoutSystemFields<Doc<"ended">>[]
 ): Promise<boolean> {
-  const cancellations = await ctx.db.query("cancellations").take(QUEUE_WINDOW);
+  const [cancellations, is_more] = await pullFromQueue(ctx, "cancellations");
 
   for (const cancellation of cancellations) {
     logger.debug(`Processing cancellation request for ${cancellation.job}`);
     await ctx.db.delete(cancellation._id);
+
+    // First, check the incoming queue
+    const incoming = await ctx.db.get(cancellation.job);
+    if (incoming) {
+      // Consolidate logic on cancelling only committed jobs.
+      await addToCommitted(logger, ctx, incoming);
+    }
 
     const committed = await ctx.db
       .query("committed")
@@ -121,7 +144,10 @@ async function processCancellations(
       )
       .first();
     if (!committed) {
-      console.warn("No committed job found for cancellation", cancellation);
+      console.warn(
+        "No incoming or committed job found for cancellation",
+        cancellation
+      );
       continue;
     }
     await ctx.db.patch(committed._id, {
@@ -151,7 +177,7 @@ async function processCancellations(
       }
     }
   }
-  return (await ctx.db.query("cancellations").first()) !== null;
+  return is_more;
 }
 
 // Phase 3. Account for gracefully ended jobs.
@@ -160,7 +186,8 @@ async function processEnded(
   ctx: MutationCtx,
   toFinalize: WithoutSystemFields<Doc<"ended">>[]
 ): Promise<boolean> {
-  const ended = await ctx.db.query("ended").take(QUEUE_WINDOW);
+  const [ended, is_more] = await pullFromQueue(ctx, "ended");
+
   for (const e of ended) {
     logger.debug(
       `Processing cleanly ended job ${e.job} with result ${e.result}`
@@ -173,7 +200,7 @@ async function processEnded(
       endedAt: e.endedAt,
     });
   }
-  return (await ctx.db.query("ended").first()) !== null;
+  return is_more;
 }
 
 const RUNNING_POLL_INTERVAL = 60 * 1000; // 1 minute.
@@ -552,16 +579,14 @@ async function advance(
   loopState: Doc<"loopState">,
   config: FrozenOptions
 ) {
-  const toFinalize: WithoutSystemFields<Doc<"ended">>[] = [];
   // Handle incoming jobs.
   const moreIncoming = await processIncoming(logger, ctx);
+  // A new job might have a changed config.
   [config, logger] = await getConfig(ctx);
 
-  // If we handled all incoming jobs, we can process cancellations.
-  let moreCancellations = false;
-  if (!moreIncoming) {
-    moreCancellations = await processCancellations(logger, ctx, toFinalize);
-  }
+  // Handle cancellations.
+  const toFinalize: WithoutSystemFields<Doc<"ended">>[] = [];
+  const moreCancellations = await processCancellations(logger, ctx, toFinalize);
 
   // Handle explicitly ended jobs.
   const moreEnded = await processEnded(logger, ctx, toFinalize);

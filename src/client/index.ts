@@ -50,11 +50,13 @@ export type Options = BaseOptions & {
 };
 
 export type RunOptions = BaseOptions & {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onComplete?: FunctionReference<
     "mutation",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     { context?: any; result: RunResult },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any
   > | null;
 

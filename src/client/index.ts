@@ -9,7 +9,7 @@ import {
   getFunctionName,
 } from "convex/server";
 import { api } from "../component/_generated/api.js";
-import { v, VString } from "convex/values";
+import { Infer, v, VString } from "convex/values";
 import { GenericId } from "convex/values";
 import { LogLevel, RunResult, runResult } from "../component/schema.js";
 import { JobStatus, Stats } from "../component/public.js";
@@ -18,6 +18,11 @@ import { ActionCtx } from "../component/_generated/server.js";
 
 export type RunId = string & { __isRunId: true };
 export const runIdValidator = v.string() as VString<RunId>;
+export const onCompleteValidator = v.object({
+  runId: runIdValidator,
+  context: v.any(),
+  result: runResult,
+});
 
 export type GlobalOptions = {
   /**
@@ -56,8 +61,7 @@ export type CallbackOptions = {
     "mutation",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    { context?: any; result: RunResult },
+    Infer<typeof onCompleteValidator>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any
   > | null;
@@ -181,7 +185,7 @@ export class IdempotentWorkpool {
       functionArgs: args ?? {},
       options: {
         ...finalOptions,
-        onComplete: onComplete,
+        onComplete,
         logLevel: this.options.logLevel,
         maxParallelism: this.options.maxParallelism,
       },

@@ -383,13 +383,14 @@ async function runOnComplete(
     const handle = run.options.onComplete as FunctionHandle<
       "mutation",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      any,
+      { runId: Id<"incoming">; context: any; result: RunResult },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       any
     >;
     await ctx.runMutation(handle, {
+      runId: run.incomingId,
       context: run.options.context,
-      result: result,
+      result,
     });
     logger.debug(`Finished running onComplete handler for ${run._id}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

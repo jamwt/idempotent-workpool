@@ -19,22 +19,7 @@ import { ActionCtx } from "../component/_generated/server.js";
 export type RunId = string & { __isRunId: true };
 export const RunIdValidator = v.string();
 
-export type BaseOptions = {
-  /**
-   * Initial delay before retrying a failure, in milliseconds. Defaults to 250ms.
-   */
-  initialBackoffMs?: number;
-  /**
-   * Base for the exponential backoff. Defaults to 2.
-   */
-  base?: number;
-  /**
-   * The maximum number of times to retry failures before giving up. Defaults to 4.
-   */
-  maxRetries?: number;
-};
-
-export type Options = BaseOptions & {
+export type GlobalOptions = {
   /**
    * The maximum number of actions to run in parallel.
    */
@@ -49,7 +34,24 @@ export type Options = BaseOptions & {
   logLevel?: LogLevel;
 };
 
-export type RunOptions = BaseOptions & {
+export type RetryOptions = {
+  /**
+   * Initial delay before retrying a failure, in milliseconds. Defaults to 250ms.
+   */
+  initialBackoffMs?: number;
+  /**
+   * Base for the exponential backoff. Defaults to 2.
+   */
+  base?: number;
+  /**
+   * The maximum number of times to retry failures before giving up. Defaults to 4.
+   */
+  maxRetries?: number;
+};
+
+export type Options = GlobalOptions & RetryOptions;
+
+export type CallbackOptions = {
   onComplete?: FunctionReference<
     "mutation",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,17 +64,22 @@ export type RunOptions = BaseOptions & {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context?: any | null;
-
-  /**
-   * The initial delay before the first run. Defaults to 0.
-   */
-  initialDelayMs?: number;
-
-  /**
-   * An annotation for the run. This will be logged for telemetry.
-   */
-  annotation?: string | null;
 };
+
+export type RunOptions = RetryOptions &
+  CallbackOptions & {
+    /**
+     * The initial delay before the first run. Defaults to 0.
+     */
+    initialDelayMs?: number;
+
+    /**
+     * An annotation for the run. This will be logged for telemetry.
+     */
+    annotation?: string | null;
+  };
+
+export type RunOnceOptions = CallbackOptions;
 
 const DEFAULT_INITIAL_BACKOFF_MS = 250;
 const DEFAULT_BASE = 2;
@@ -88,6 +95,15 @@ function defaultRunOptions(options?: RunOptions): Required<RunOptions> {
     initialDelayMs: options?.initialDelayMs ?? 0,
     context: options?.context,
   };
+}
+
+function runOnceToRunOptions(options?: RunOnceOptions): Required<RunOptions> {
+  const runOptions = defaultRunOptions();
+  runOptions.onComplete = options?.onComplete ?? null;
+  runOptions.context = options?.context;
+  // No retries!
+  runOptions.maxRetries = 0;
+  return runOptions;
 }
 
 export class IdempotentWorkpool {
@@ -194,6 +210,45 @@ export class IdempotentWorkpool {
     const delayMs = Math.max(0, atMs - now);
     finalOptions.initialDelayMs = delayMs;
     return (await this.run(ctx, reference, args, finalOptions)) as RunId;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async runOnce<F extends FunctionReference<"action", any, any, any>>(
+    ctx: RunMutationCtx,
+    reference: F,
+    args?: FunctionArgs<F>,
+    options?: RunOnceOptions
+  ): Promise<RunId> {
+    const runOptions = runOnceToRunOptions(options);
+    return (await this.run(ctx, reference, args, runOptions)) as RunId;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async runOnceAfter<F extends FunctionReference<"action", any, any, any>>(
+    ctx: RunMutationCtx,
+    delayMs: number,
+    reference: F,
+    args?: FunctionArgs<F>,
+    options?: RunOnceOptions
+  ): Promise<RunId> {
+    const runOptions = runOnceToRunOptions(options);
+    runOptions.initialDelayMs = delayMs;
+    return (await this.run(ctx, reference, args, runOptions)) as RunId;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async runOnceAt<F extends FunctionReference<"action", any, any, any>>(
+    ctx: RunMutationCtx,
+    atMs: number,
+    reference: F,
+    args?: FunctionArgs<F>,
+    options?: RunOnceOptions
+  ): Promise<RunId> {
+    const runOptions = runOnceToRunOptions(options);
+    const now = Date.now();
+    const delayMs = Math.max(0, atMs - now);
+    runOptions.initialDelayMs = delayMs;
+    return (await this.run(ctx, reference, args, runOptions)) as RunId;
   }
 
   /**

@@ -51,11 +51,15 @@ export type Options = BaseOptions & {
 
 export type RunOptions = BaseOptions & {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onComplete?: FunctionReference<"mutation", any, { context?: any, result: RunResult }, any>;
+  onComplete?: FunctionReference<
+    "mutation",
+    any,
+    { context?: any; result: RunResult },
+    any
+  > | null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  context?: any;
-
+  context?: any | null;
 
   /**
    * The initial delay before the first run. Defaults to 0.
@@ -65,12 +69,25 @@ export type RunOptions = BaseOptions & {
   /**
    * An annotation for the run. This will be logged for telemetry.
    */
-  annotation?: string;
+  annotation?: string | null;
 };
 
 const DEFAULT_INITIAL_BACKOFF_MS = 250;
 const DEFAULT_BASE = 2;
-const DEFAULT_MAX_FAILURES = 4;
+const DEFAULT_MAX_RETRIES = 4;
+
+function defaultRunOptions(options?: RunOptions): Required<RunOptions> {
+  return {
+    initialBackoffMs: options?.initialBackoffMs ?? DEFAULT_INITIAL_BACKOFF_MS,
+    base: options?.base ?? DEFAULT_BASE,
+    maxRetries: options?.maxRetries ?? DEFAULT_MAX_RETRIES,
+    onComplete: options?.onComplete ?? null,
+    annotation: options?.annotation ?? null,
+    initialDelayMs: options?.initialDelayMs ?? 0,
+    context: options?.context,
+  };
+}
+
 export class IdempotentWorkpool {
   options: Required<Options>;
 
@@ -92,13 +109,15 @@ export class IdempotentWorkpool {
     options: Options
   ) {
     const DEFAULT_LOG_LEVEL = getDefaultLogLevel();
+    const runOptions = defaultRunOptions();
+
     this.options = {
-      initialBackoffMs: options?.initialBackoffMs ?? DEFAULT_INITIAL_BACKOFF_MS,
-      base: options?.base ?? DEFAULT_BASE,
-      maxRetries: options?.maxRetries ?? DEFAULT_MAX_FAILURES,
-      logLevel: options?.logLevel ?? DEFAULT_LOG_LEVEL,
-      maxParallelism: options?.maxParallelism,
-      statsWindowMs: options?.statsWindowMs ?? 0,
+      initialBackoffMs: options.initialBackoffMs ?? runOptions.initialBackoffMs,
+      base: options.base ?? DEFAULT_BASE,
+      maxRetries: options.maxRetries ?? runOptions.maxRetries,
+      logLevel: options.logLevel ?? DEFAULT_LOG_LEVEL,
+      maxParallelism: options.maxParallelism,
+      statsWindowMs: options.statsWindowMs ?? 0,
     };
   }
 
@@ -112,6 +131,9 @@ export class IdempotentWorkpool {
    * @param options.base - Optional override for the default base for the exponential backoff.
    * @param options.maxRetries - Optional override for the default maximum number of retries.
    * @param options.onComplete - Optional mutation to run after the function succeeds, fails,
+   * @param options.annotation - Optional annotation for the run.
+   * @param options.initialDelayMs - Optional initial delay before the first run.
+   * @param options.context - Optional context object to pass to the function.
    * or is canceled. This function must take in a single `result` argument of type `RunResult`: use
    * `runResultValidator` to validate this argument.
    * @returns - A `RunId` for the run that can be used to query its status below.
@@ -126,27 +148,50 @@ export class IdempotentWorkpool {
     const handle = await createFunctionHandle(reference);
     const functionName = getFunctionName(reference);
     let onComplete: string | undefined;
-    if (options?.onComplete) {
-      onComplete = await createFunctionHandle(options.onComplete);
+    const finalOptions = defaultRunOptions(options);
+    if (finalOptions.onComplete) {
+      onComplete = await createFunctionHandle(finalOptions.onComplete);
     }
     const runId = await ctx.runMutation(this.component.public.start, {
       functionHandle: handle,
       functionName,
       functionArgs: args ?? {},
       options: {
-        initialBackoffMs:
-          options?.initialBackoffMs ?? this.options.initialBackoffMs,
-        base: options?.base ?? this.options.base,
-        maxRetries: options?.maxRetries ?? this.options.maxRetries,
+        ...finalOptions,
+        onComplete: onComplete,
         logLevel: this.options.logLevel,
         maxParallelism: this.options.maxParallelism,
-        onComplete,
-        annotation: options?.annotation,
-        initialDelayMs: options?.initialDelayMs ?? 0,
-        context: options?.context,
       },
     });
     return runId as RunId;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async runAfter<F extends FunctionReference<"action", any, any, any>>(
+    ctx: RunMutationCtx,
+    delayMs: number,
+    reference: F,
+    args?: FunctionArgs<F>,
+    options?: RunOptions
+  ): Promise<RunId> {
+    const finalOptions = defaultRunOptions(options);
+    finalOptions.initialDelayMs = delayMs;
+    return (await this.run(ctx, reference, args, finalOptions)) as RunId;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async runAt<F extends FunctionReference<"action", any, any, any>>(
+    ctx: RunMutationCtx,
+    atMs: number,
+    reference: F,
+    args?: FunctionArgs<F>,
+    options?: RunOptions
+  ): Promise<RunId> {
+    const finalOptions = defaultRunOptions(options);
+    const now = Date.now();
+    const delayMs = Math.max(0, atMs - now);
+    finalOptions.initialDelayMs = delayMs;
+    return (await this.run(ctx, reference, args, finalOptions)) as RunId;
   }
 
   /**

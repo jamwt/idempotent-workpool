@@ -56,9 +56,9 @@ export declare const components: {
           functionHandle: string;
           functionName: string;
           options: {
-            annotation?: string;
+            annotation: string | null;
             base: number;
-            context?: any;
+            context: any | null;
             initialBackoffMs: number;
             initialDelayMs: number;
             logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";

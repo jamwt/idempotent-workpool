@@ -20,10 +20,10 @@ export const options = {
   initialBackoffMs: v.number(),
   base: v.number(),
   maxRetries: v.number(),
-  onComplete: v.optional(v.string()),
-  annotation: v.optional(v.string()),
   initialDelayMs: v.number(),
-  context: v.optional(v.any()),
+  onComplete: v.optional(v.string()),
+  annotation: v.union(v.string(), v.null()),
+  context: v.any(),
 };
 const optionsObj = v.object(options);
 export type Options = Infer<typeof optionsObj>;

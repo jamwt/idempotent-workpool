@@ -11,7 +11,7 @@ import {
 import { api } from "../component/_generated/api.js";
 import { Infer, v, VString } from "convex/values";
 import { GenericId } from "convex/values";
-import { LogLevel, RunResult, runResult } from "../component/schema.js";
+import { LogLevel, runResult } from "../component/schema.js";
 import { JobStatus, Stats } from "../component/public.js";
 import { getDefaultLogLevel } from "../component/logger.js";
 import { ActionCtx } from "../component/_generated/server.js";

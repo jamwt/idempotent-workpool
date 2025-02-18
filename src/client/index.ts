@@ -3,6 +3,7 @@ import {
   Expand,
   FunctionArgs,
   FunctionReference,
+  FunctionVisibility,
   GenericDataModel,
   GenericMutationCtx,
   GenericQueryCtx,
@@ -59,8 +60,7 @@ export type Options = GlobalOptions & RetryOptions;
 export type CallbackOptions = {
   onComplete?: FunctionReference<
     "mutation",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any,
+    FunctionVisibility,
     Infer<typeof onCompleteValidator>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     any

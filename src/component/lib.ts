@@ -15,10 +15,6 @@ import { updateErrorStats } from "./stats";
 
 const WHEEL_SEGMENT_MS = 125;
 
-function nowWheelSegment() {
-  return toWheelSegment(Date.now());
-}
-
 function toWheelSegment(ms: number) {
   return Math.floor(ms / WHEEL_SEGMENT_MS);
 }
@@ -422,7 +418,7 @@ export function withJitter(delay: number) {
 // Phase 6. Run jobs from the wheel.
 async function runWheelJobs(logger: Logger, ctx: MutationCtx, count: number) {
   logger.debug(`Running any ready wheel jobs (available threads = ${count})`);
-  const maxSegment = nowWheelSegment();
+  const maxSegment = toWheelSegment(Date.now());
   const wheelJobs = await ctx.db
     .query("wheel")
     .withIndex("by_segment")

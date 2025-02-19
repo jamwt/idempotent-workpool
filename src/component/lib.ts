@@ -364,8 +364,7 @@ async function runOnComplete(
   logger: Logger,
   ctx: MutationCtx,
   run: Doc<"committed">,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  result: any
+  result: RunResult
 ) {
   if (!run.options.onComplete) {
     return;
@@ -374,10 +373,7 @@ async function runOnComplete(
     logger.debug(`Running onComplete handler for ${run._id}`);
     const handle = run.options.onComplete as FunctionHandle<
       "mutation",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { runId: Id<"incoming">; context: any; result: RunResult },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      any
+      { runId: Id<"incoming">; context: unknown; result: RunResult }
     >;
     await ctx.runMutation(handle, {
       runId: run.incomingId,
@@ -467,8 +463,7 @@ export const execute = internalAction({
     const logger = createLogger(run.options.logLevel);
     logger.debug(`Executing run ${args.runId}`, run);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handle = run.handle as FunctionHandle<"action", any, any>;
+    const handle = run.handle as FunctionHandle<"action">;
     let result: RunResult;
     let endedAt;
     try {

@@ -38,13 +38,7 @@ export async function emitStats(
   }>
 ) {
   for (const r of records) {
-    await ctx.db.insert("stats", {
-      job: r.job,
-      retry: r.retry,
-      when: r.when,
-      finalRunTime: r.finalRunTime,
-      error: r.error,
-    });
+    await ctx.db.insert("stats", r);
   }
   await mainLoop.trigger(ctx);
 }

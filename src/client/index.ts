@@ -8,7 +8,6 @@ import {
   GenericMutationCtx,
   GenericQueryCtx,
   getFunctionName,
-  Scheduler,
 } from "convex/server";
 import { api } from "../component/_generated/api.js";
 import { Infer, v, VString } from "convex/values";
@@ -192,7 +191,7 @@ export class IdempotentWorkpool {
    * Run an action after a delay. See {@link run} for more details.
    *
    * @param ctx - The context object from your mutation or action.
-   * @param delayMs - The delay in milliseconds. See {@link Scheduler["runAfter"]} for more details.
+   * @param delayMs - The delay in milliseconds. See {@link scheduler.runAfter} for more details.
    * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOptions} options. Unset options will use the default values.
@@ -214,7 +213,7 @@ export class IdempotentWorkpool {
    * Run an action at a specific time. See {@link run} for more details.
    *
    * @param ctx - The context object from your mutation or action.
-   * @param atMs - The time in milliseconds. See {@link Scheduler["runAt"]} for more details.
+   * @param atMs - The time in milliseconds. See {@link scheduler.runAt} for more details.
    * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOptions} options. Unset options will use the default values.
@@ -257,7 +256,7 @@ export class IdempotentWorkpool {
    * Run an action without retries after a delay. See {@link runAfter} for more details.
    *
    * @param ctx - The context object from your mutation or action.
-   * @param delayMs - The delay in milliseconds. See {@link Scheduler["runAfter"]} for more details.
+   * @param delayMs - The delay in milliseconds. See {@link scheduler.runAfter} for more details.
    * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
@@ -278,7 +277,7 @@ export class IdempotentWorkpool {
    * Run an action without retries at a specific time. See {@link runAt} for more details.
    *
    * @param ctx - The context object from your mutation or action.
-   * @param atMs - The time in milliseconds. See {@link Scheduler["runAt"]} for more details.
+   * @param atMs - The time in milliseconds. See {@link scheduler.runAt} for more details.
    * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOnceOptions} options. Unset options will use the default values.

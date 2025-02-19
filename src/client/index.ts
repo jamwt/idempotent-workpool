@@ -163,8 +163,7 @@ export class IdempotentWorkpool {
    * @param options - {@link RunOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async run<F extends FunctionReference<"action", any, any, any>>(
+  async run<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     reference: F,
     args?: FunctionArgs<F>,

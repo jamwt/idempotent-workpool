@@ -55,23 +55,27 @@ export function getDefaultLogLevel(): LogLevel {
   if (process.env.IDEMPOTENT_WORKPOOL_LOG_LEVEL) {
     if (
       !["DEBUG", "INFO", "WARN", "ERROR"].includes(
-          process.env.IDEMPOTENT_WORKPOOL_LOG_LEVEL
-        )
-      ) {
-        console.warn(
-          `Invalid log level (${process.env.IDEMPOTENT_WORKPOOL_LOG_LEVEL}), defaulting to "INFO"`
-        );
-      } else {
-        DEFAULT_LOG_LEVEL = process.env
-          .IDEMPOTENT_WORKPOOL_LOG_LEVEL as LogLevel;
-      }
+        process.env.IDEMPOTENT_WORKPOOL_LOG_LEVEL
+      )
+    ) {
+      console.warn(
+        `Invalid log level (${process.env.IDEMPOTENT_WORKPOOL_LOG_LEVEL}), defaulting to "INFO"`
+      );
+    } else {
+      DEFAULT_LOG_LEVEL = process.env.IDEMPOTENT_WORKPOOL_LOG_LEVEL as LogLevel;
     }
-    return DEFAULT_LOG_LEVEL;
+  }
+  return DEFAULT_LOG_LEVEL;
 }
 
 export const debugOverrideLogLevel = internalMutation({
   args: {
-    level: v.union(v.literal("DEBUG"), v.literal("INFO"), v.literal("WARN"), v.literal("ERROR")),
+    level: v.union(
+      v.literal("DEBUG"),
+      v.literal("INFO"),
+      v.literal("WARN"),
+      v.literal("ERROR")
+    ),
   },
   handler: async (ctx, args) => {
     const frozen = await ctx.db.query("frozenConfig").first();
@@ -83,7 +87,7 @@ export const debugOverrideLogLevel = internalMutation({
         },
       });
     } else {
-        throw Error("No existing config to patch.");
+      throw Error("No existing config to patch.");
     }
   },
 });

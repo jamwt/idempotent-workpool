@@ -158,27 +158,25 @@ export class IdempotentWorkpool {
    * Run an action with retries, optionally with an `onComplete` mutation callback.
    *
    * @param ctx - The context object from your mutation or action.
-   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
    */
   async run<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
-    reference: F,
+    fn: F,
     args?: FunctionArgs<F>,
     options?: RunOptions
   ): Promise<RunId> {
-    const handle = await createFunctionHandle(reference);
-    const functionName = getFunctionName(reference);
     let onComplete: string | undefined;
     const finalOptions = defaultRunOptions(this.options, options);
     if (finalOptions.onComplete) {
       onComplete = await createFunctionHandle(finalOptions.onComplete);
     }
     const runId = await ctx.runMutation(this.component.public.start, {
-      functionHandle: handle,
-      functionName,
+      functionHandle: await createFunctionHandle(fn),
+      functionName: getFunctionName(fn),
       functionArgs: args ?? {},
       options: {
         ...finalOptions,
@@ -191,11 +189,11 @@ export class IdempotentWorkpool {
   }
 
   /**
-   * Run an action after a delay. See {@link IdempotentWorkpool.run} for more details.
+   * Run an action after a delay. See {@link run} for more details.
    *
    * @param ctx - The context object from your mutation or action.
    * @param delayMs - The delay in milliseconds. See {@link Scheduler["runAfter"]} for more details.
-   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
@@ -203,21 +201,21 @@ export class IdempotentWorkpool {
   async runAfter<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     delayMs: number,
-    reference: F,
+    fn: F,
     args?: FunctionArgs<F>,
     options?: RunOptions
   ): Promise<RunId> {
     const finalOptions = defaultRunOptions(this.options, options);
     finalOptions.initialDelayMs = delayMs;
-    return (await this.run(ctx, reference, args, finalOptions)) as RunId;
+    return (await this.run(ctx, fn, args, finalOptions)) as RunId;
   }
 
   /**
-   * Run an action at a specific time. See {@link IdempotentWorkpool.run} for more details.
+   * Run an action at a specific time. See {@link run} for more details.
    *
    * @param ctx - The context object from your mutation or action.
    * @param atMs - The time in milliseconds. See {@link Scheduler["runAt"]} for more details.
-   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
@@ -225,7 +223,7 @@ export class IdempotentWorkpool {
   async runAt<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     atMs: number,
-    reference: F,
+    fn: F,
     args?: FunctionArgs<F>,
     options?: RunOptions
   ): Promise<RunId> {
@@ -233,26 +231,26 @@ export class IdempotentWorkpool {
     const now = Date.now();
     const delayMs = Math.max(0, atMs - now);
     finalOptions.initialDelayMs = delayMs;
-    return (await this.run(ctx, reference, args, finalOptions)) as RunId;
+    return (await this.run(ctx, fn, args, finalOptions)) as RunId;
   }
 
   /**
    * Run an action without retries. See {@link run} for more details.
    *
    * @param ctx - The context object from your mutation or action.
-   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
    */
   async runOnce<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
-    reference: F,
+    fn: F,
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
     const runOptions = { ...options, maxRetries: 0 };
-    return (await this.run(ctx, reference, args, runOptions)) as RunId;
+    return this.run(ctx, fn, args, runOptions);
   }
 
   /**
@@ -260,7 +258,7 @@ export class IdempotentWorkpool {
    *
    * @param ctx - The context object from your mutation or action.
    * @param delayMs - The delay in milliseconds. See {@link Scheduler["runAfter"]} for more details.
-   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
@@ -268,18 +266,12 @@ export class IdempotentWorkpool {
   async runOnceAfter<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     delayMs: number,
-    reference: F,
+    fn: F,
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
     const runOptions = { ...options, maxRetries: 0 };
-    return (await this.runAfter(
-      ctx,
-      delayMs,
-      reference,
-      args,
-      runOptions
-    )) as RunId;
+    return this.runAfter(ctx, delayMs, fn, args, runOptions);
   }
 
   /**
@@ -287,7 +279,7 @@ export class IdempotentWorkpool {
    *
    * @param ctx - The context object from your mutation or action.
    * @param atMs - The time in milliseconds. See {@link Scheduler["runAt"]} for more details.
-   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param fn - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
    * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
    * @returns - A {@link RunId} for the run that can be used to query its status.
@@ -295,12 +287,12 @@ export class IdempotentWorkpool {
   async runOnceAt<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     atMs: number,
-    reference: F,
+    fn: F,
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
     const runOptions = { ...options, maxRetries: 0 };
-    return (await this.runAt(ctx, atMs, reference, args, runOptions)) as RunId;
+    return this.runAt(ctx, atMs, fn, args, runOptions);
   }
 
   /**

@@ -10,19 +10,6 @@ const counter = new ShardedCounter(components.shardedCounter, {
   },
 });
 
-export const advanceAndPoll = internalMutation({
-  args: {
-    handle: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await counter.add(ctx, "gen", 1);
-    await ctx.scheduler.runAfter(0, internal.mainLoop.poll, {
-      handle: args.handle,
-    });
-  },
-});
-
 export const recover = internalMutation({
   args: {},
   returns: v.null(),
@@ -112,17 +99,14 @@ import { createFunctionHandle } from "convex/server";
 import { FunctionReference } from "convex/server";
 import { MutationCtx } from "./_generated/server";
 
-export type Options = {
-  handle: FunctionReference<"mutation", "internal">,
-};
+export type Options = { handle: FunctionReference<"mutation", "internal"> };
 
 export class MainLoop {
   constructor(public options: Options) {}
 
   public async trigger(ctx: MutationCtx) {
     const handle = await createFunctionHandle(this.options.handle);
-    await ctx.runMutation(internal.mainLoop.advanceAndPoll, {
-      handle,
-    });
+    await counter.add(ctx, "gen", 1);
+    await ctx.scheduler.runAfter(0, internal.mainLoop.poll, { handle });
   }
 }

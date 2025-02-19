@@ -9,6 +9,7 @@ import {
 } from "./_generated/server";
 import { MainLoop } from "./mainLoop";
 import { Bound, DirectAggregate } from "@convex-dev/aggregate";
+import { createLogger } from "./logger";
 
 const mainLoop = new MainLoop({
   handle: internal.stats.loop,
@@ -157,6 +158,9 @@ export const debugErrorStats = internalQuery({
     windowMs: v.number(),
   },
   handler: async (ctx, args) => {
-    return await getErrorStats(ctx, args.windowMs);
+    const logger = createLogger("DEBUG");
+    const stats = await getErrorStats(ctx, args.windowMs);
+    logger.debug(stats);
+    return stats;
   },
 });

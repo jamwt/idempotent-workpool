@@ -83,7 +83,6 @@ export default defineSchema({
   currentGeneration: defineTable({
     generation: v.number(),
     job: v.id("_scheduled_functions"),
-    handle: v.string(),
   }),
   stats: defineTable({
     job: v.id("committed"),

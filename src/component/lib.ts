@@ -10,12 +10,8 @@ import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { createLogger, getDefaultLogLevel, Logger } from "./logger";
 import { internal } from "./_generated/api";
 import { FrozenOptions, runResult, RunResult } from "./schema";
-import { MainLoop } from "./mainLoop";
+import { trigger } from "./mainLoop";
 import { updateErrorStats } from "./stats";
-
-const mainLoop = new MainLoop({
-  handle: internal.lib.loop,
-});
 
 const WHEEL_SEGMENT_MS = 125;
 
@@ -638,7 +634,7 @@ async function scheduleNextLoop(
   // immediately go keep the system moving.
   if (unprocessedQueues) {
     logger.debug("Unprocessed queues -- waking up immediately");
-    await mainLoop.trigger(ctx);
+    await trigger(ctx);
     return null;
   } else {
     // Get the minimum wheel segment.
@@ -685,7 +681,7 @@ export async function enqueueIncoming(
   job: WithoutSystemFields<Doc<"incoming">>
 ): Promise<Id<"incoming">> {
   const id = await ctx.db.insert("incoming", job);
-  await mainLoop.trigger(ctx);
+  await trigger(ctx);
   return id;
 }
 
@@ -695,7 +691,7 @@ export async function enqueueCancellation(
   job: WithoutSystemFields<Doc<"cancellations">>
 ) {
   await ctx.db.insert("cancellations", job);
-  await mainLoop.trigger(ctx);
+  await trigger(ctx);
 }
 
 export async function enqueueEnded(
@@ -704,7 +700,7 @@ export async function enqueueEnded(
   job: WithoutSystemFields<Doc<"ended">>
 ) {
   await ctx.db.insert("ended", job);
-  await mainLoop.trigger(ctx);
+  await trigger(ctx);
 }
 
 async function cancelIfRunning(

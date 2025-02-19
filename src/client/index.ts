@@ -122,18 +122,6 @@ function defaultRunOptions(
   };
 }
 
-function runOnceToRunOptions(
-  baseline: Required<Options>,
-  options?: RunOnceOptions
-): Required<RunOptions> {
-  const runOptions = defaultRunOptions(baseline);
-  runOptions.onComplete = options?.onComplete ?? null;
-  runOptions.context = options?.context;
-  // No retries!
-  runOptions.maxRetries = 0;
-  return runOptions;
-}
-
 export class IdempotentWorkpool {
   options: Required<Options>;
 
@@ -264,7 +252,7 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
-    const runOptions = runOnceToRunOptions(this.options, options);
+    const runOptions = { ...options, maxRetries: 0 };
     return (await this.run(ctx, reference, args, runOptions)) as RunId;
   }
 
@@ -285,9 +273,14 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
-    const runOptions = runOnceToRunOptions(this.options, options);
-    runOptions.initialDelayMs = delayMs;
-    return (await this.run(ctx, reference, args, runOptions)) as RunId;
+    const runOptions = { ...options, maxRetries: 0 };
+    return (await this.runAfter(
+      ctx,
+      delayMs,
+      reference,
+      args,
+      runOptions
+    )) as RunId;
   }
 
   /**
@@ -307,11 +300,8 @@ export class IdempotentWorkpool {
     args?: FunctionArgs<F>,
     options?: RunOnceOptions
   ): Promise<RunId> {
-    const runOptions = runOnceToRunOptions(this.options, options);
-    const now = Date.now();
-    const delayMs = Math.max(0, atMs - now);
-    runOptions.initialDelayMs = delayMs;
-    return (await this.run(ctx, reference, args, runOptions)) as RunId;
+    const runOptions = { ...options, maxRetries: 0 };
+    return (await this.runAt(ctx, atMs, reference, args, runOptions)) as RunId;
   }
 
   /**

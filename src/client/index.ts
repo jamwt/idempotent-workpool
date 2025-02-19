@@ -8,6 +8,7 @@ import {
   GenericMutationCtx,
   GenericQueryCtx,
   getFunctionName,
+  Scheduler,
 } from "convex/server";
 import { api } from "../component/_generated/api.js";
 import { Infer, v, VString } from "convex/values";
@@ -58,16 +59,33 @@ export type RetryOptions = {
 export type Options = GlobalOptions & RetryOptions;
 
 export type CallbackOptions = {
+  /**
+   * A mutation to run after the function succeeds, fails, or is canceled.
+   * The context type is for your use, feel free to provide a validator for it.
+   * e.g.
+   * ```ts
+   * export const completion = internalMutation({
+   *  args: {
+   *    runId: runIdValidator,
+   *    context: v.any(),
+   *    result: runResultValidator,
+   *  },
+   *  handler: async (ctx, args) => {
+   *    console.log(args.result, "Got Context back -> ", args.context, Date.now() - args.context);
+   *  },
+   * });
+   * ```
+   */
   onComplete?: FunctionReference<
     "mutation",
     FunctionVisibility,
-    Infer<typeof onCompleteValidator>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    any
+    Infer<typeof onCompleteValidator>
   > | null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  context?: any | null;
+  /**
+   * A context object to pass to the `onComplete` mutation.
+   */
+  context?: unknown | null;
 };
 
 export type RunOptions = RetryOptions &
@@ -154,16 +172,8 @@ export class IdempotentWorkpool {
    * @param ctx - The context object from your mutation or action.
    * @param reference - The function reference to run, e.g., `internal.module.myAction`.
    * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
-   * @param options.initialBackoffMs - Optional override for the default initial backoff on failure.
-   * @param options.base - Optional override for the default base for the exponential backoff.
-   * @param options.maxRetries - Optional override for the default maximum number of retries.
-   * @param options.onComplete - Optional mutation to run after the function succeeds, fails,
-   * @param options.annotation - Optional annotation for the run.
-   * @param options.initialDelayMs - Optional initial delay before the first run.
-   * @param options.context - Optional context object to pass to the function.
-   * or is canceled. This function must take in a single `result` argument of type `RunResult`: use
-   * `runResultValidator` to validate this argument.
-   * @returns - A `RunId` for the run that can be used to query its status below.
+   * @param options - {@link RunOptions} options. Unset options will use the default values.
+   * @returns - A {@link RunId} for the run that can be used to query its status.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async run<F extends FunctionReference<"action", any, any, any>>(
@@ -193,8 +203,17 @@ export class IdempotentWorkpool {
     return runId as RunId;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async runAfter<F extends FunctionReference<"action", any, any, any>>(
+  /**
+   * Run an action after a delay. See {@link IdempotentWorkpool.run} for more details.
+   *
+   * @param ctx - The context object from your mutation or action.
+   * @param delayMs - The delay in milliseconds. See {@link Scheduler["runAfter"]} for more details.
+   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
+   * @param options - {@link RunOptions} options. Unset options will use the default values.
+   * @returns - A {@link RunId} for the run that can be used to query its status.
+   */
+  async runAfter<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     delayMs: number,
     reference: F,
@@ -206,8 +225,17 @@ export class IdempotentWorkpool {
     return (await this.run(ctx, reference, args, finalOptions)) as RunId;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async runAt<F extends FunctionReference<"action", any, any, any>>(
+  /**
+   * Run an action at a specific time. See {@link IdempotentWorkpool.run} for more details.
+   *
+   * @param ctx - The context object from your mutation or action.
+   * @param atMs - The time in milliseconds. See {@link Scheduler["runAt"]} for more details.
+   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
+   * @param options - {@link RunOptions} options. Unset options will use the default values.
+   * @returns - A {@link RunId} for the run that can be used to query its status.
+   */
+  async runAt<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     atMs: number,
     reference: F,
@@ -221,8 +249,16 @@ export class IdempotentWorkpool {
     return (await this.run(ctx, reference, args, finalOptions)) as RunId;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async runOnce<F extends FunctionReference<"action", any, any, any>>(
+  /**
+   * Run an action without retries. See {@link run} for more details.
+   *
+   * @param ctx - The context object from your mutation or action.
+   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
+   * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
+   * @returns - A {@link RunId} for the run that can be used to query its status.
+   */
+  async runOnce<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     reference: F,
     args?: FunctionArgs<F>,
@@ -232,8 +268,17 @@ export class IdempotentWorkpool {
     return (await this.run(ctx, reference, args, runOptions)) as RunId;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async runOnceAfter<F extends FunctionReference<"action", any, any, any>>(
+  /**
+   * Run an action without retries after a delay. See {@link runAfter} for more details.
+   *
+   * @param ctx - The context object from your mutation or action.
+   * @param delayMs - The delay in milliseconds. See {@link Scheduler["runAfter"]} for more details.
+   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
+   * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
+   * @returns - A {@link RunId} for the run that can be used to query its status.
+   */
+  async runOnceAfter<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     delayMs: number,
     reference: F,
@@ -245,8 +290,17 @@ export class IdempotentWorkpool {
     return (await this.run(ctx, reference, args, runOptions)) as RunId;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async runOnceAt<F extends FunctionReference<"action", any, any, any>>(
+  /**
+   * Run an action without retries at a specific time. See {@link runAt} for more details.
+   *
+   * @param ctx - The context object from your mutation or action.
+   * @param atMs - The time in milliseconds. See {@link Scheduler["runAt"]} for more details.
+   * @param reference - The function reference to run, e.g., `internal.module.myAction`.
+   * @param args - Arguments for the action, e.g., `{ arg: 123 }`.
+   * @param options - {@link RunOnceOptions} options. Unset options will use the default values.
+   * @returns - A {@link RunId} for the run that can be used to query its status.
+   */
+  async runOnceAt<F extends FunctionReference<"action", FunctionVisibility>>(
     ctx: RunMutationCtx,
     atMs: number,
     reference: F,

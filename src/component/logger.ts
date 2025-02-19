@@ -44,8 +44,7 @@ export function createLogger(level: LogLevel): Logger {
           event,
           payload,
         };
-        const json = JSON.stringify(fullPayload);
-        console.info(json);
+        console.info(fullPayload);
       }
     },
   };

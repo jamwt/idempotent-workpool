@@ -1,4 +1,10 @@
-import { action, internalQuery, mutation, query } from "./_generated/server.js";
+import {
+  action,
+  internalQuery,
+  mutation,
+  query,
+  QueryCtx,
+} from "./_generated/server.js";
 import { Infer, v } from "convex/values";
 import { Options, options } from "./schema.js";
 import { createLogger, getDefaultLogLevel } from "./logger.js";
@@ -47,7 +53,7 @@ export const start = mutation({
     functionArgs: v.any(),
     options: v.object(options),
   },
-  returns: v.string(),
+  returns: v.id("incoming"),
   handler: async (ctx, args) => {
     validateOptions(args.options);
     const logger = createLogger(args.options.logLevel);
@@ -67,22 +73,18 @@ export const start = mutation({
         maxRetries: args.options.maxRetries,
       },
     });
-    return id as string;
+    return id;
   },
 });
 
 export const cancel = mutation({
   args: {
-    runId: v.string(),
+    runId: v.id("incoming"),
   },
   handler: async (ctx, args) => {
     const logger = createLogger(getDefaultLogLevel());
-    const id = ctx.db.normalizeId("incoming", args.runId);
-    if (!id) {
-      return false;
-    }
     await enqueueCancellation(logger, ctx, {
-      job: id,
+      job: args.runId,
     });
     return true;
   },
@@ -126,35 +128,37 @@ export type Stats = Infer<typeof StatsValidator>;
 const DEFAULT_STATS_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 export const stats = query({
-  args: {
-    statsWindowMs: v.optional(v.number()),
-  },
+  args: { statsWindowMs: v.optional(v.number()) },
   returns: StatsValidator,
   handler: async (ctx, args) => {
-    const { runErrors, runTotal, jobErrors, jobTotal, jobTotalSum } =
-      await getErrorStats(ctx, args.statsWindowMs ?? DEFAULT_STATS_WINDOW_MS);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const numIncoming = await (ctx.db.query("incoming") as any).count();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const numCommitted = await (ctx.db.query("committed") as any).count();
-    let oldestCreated = 0;
-    if (numIncoming) {
-      oldestCreated = (await ctx.db.query("incoming").first())!._creationTime;
-    } else if (numCommitted) {
-      oldestCreated = (await ctx.db.query("committed").first())!._creationTime;
-    }
-    const pending = numIncoming + numCommitted;
-    const now = Date.now();
-    return {
-      pending,
-      recentExecutions: runTotal,
-      recentErrorRate: runTotal === 0 ? 0 : runErrors / runTotal,
-      recentPermanentFailureRate: jobTotal === 0 ? 0 : jobErrors / jobTotal,
-      recentJobAverageMs: jobTotalSum === 0 ? 0 : jobTotalSum / jobTotal,
-      oldestPendingMs: oldestCreated ? now - oldestCreated : 0,
-    };
+    return getStats(ctx, args.statsWindowMs);
   },
 });
+
+async function getStats(ctx: QueryCtx, statsWindowMs: number | undefined) {
+  const { runErrors, runTotal, jobErrors, jobTotal, jobTotalSum } =
+    await getErrorStats(ctx, statsWindowMs ?? DEFAULT_STATS_WINDOW_MS);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const numIncoming = await (ctx.db.query("incoming") as any).count();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const numCommitted = await (ctx.db.query("committed") as any).count();
+  let oldestCreated = 0;
+  if (numIncoming) {
+    oldestCreated = (await ctx.db.query("incoming").first())!._creationTime;
+  } else if (numCommitted) {
+    oldestCreated = (await ctx.db.query("committed").first())!._creationTime;
+  }
+  const pending = numIncoming + numCommitted;
+  const now = Date.now();
+  return {
+    pending,
+    recentExecutions: runTotal,
+    recentErrorRate: runTotal === 0 ? 0 : runErrors / runTotal,
+    recentPermanentFailureRate: jobTotal === 0 ? 0 : jobErrors / jobTotal,
+    recentJobAverageMs: jobTotalSum === 0 ? 0 : jobTotalSum / jobTotal,
+    oldestPendingMs: oldestCreated ? now - oldestCreated : 0,
+  };
+}
 
 export const cancelAll = action({
   args: {},
@@ -211,9 +215,7 @@ export const activePage = internalQuery({
 export const logStats = mutation({
   args: { statsWindowMs: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const stats = await ctx.runQuery(api.public.stats, {
-      statsWindowMs: args.statsWindowMs,
-    });
+    const stats = await getStats(ctx, args.statsWindowMs);
     createLogger("INFO").event("stats", stats);
   },
 });
@@ -236,15 +238,11 @@ export type JobStatus = {
 };
 
 export const status = query({
-  args: { runId: v.string() },
+  args: { runId: v.id("incoming") },
   returns: statusValidator,
   handler: async (ctx, args): Promise<JobStatus> => {
     // First, check incoming.
-    const id = ctx.db.normalizeId("incoming", args.runId);
-    if (!id) {
-      throw new Error("Unknown run id");
-    }
-    const incoming = await ctx.db.get(id);
+    const incoming = await ctx.db.get(args.runId);
     if (incoming) {
       return { kind: "enqueued" };
     }
@@ -252,7 +250,7 @@ export const status = query({
     const committed = await ctx.db
       .query("committed")
       .withIndex("by_incoming", (q) =>
-        q.eq("canceled", false).eq("incomingId", id)
+        q.eq("canceled", false).eq("incomingId", args.runId)
       )
       .first();
     if (committed) {
@@ -277,7 +275,7 @@ export const status = query({
       const committedCanceled = await ctx.db
         .query("committed")
         .withIndex("by_incoming", (q) =>
-          q.eq("canceled", true).eq("incomingId", id)
+          q.eq("canceled", true).eq("incomingId", args.runId)
         )
         .first();
       if (committedCanceled) {

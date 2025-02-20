@@ -10,18 +10,10 @@ import { Doc, Id, TableNames } from "./_generated/dataModel";
 import { createLogger, getDefaultLogLevel, Logger } from "./logger";
 import { internal } from "./_generated/api";
 import { FrozenOptions, runResult, RunResult } from "./schema";
-import { MainLoop } from "./mainLoop";
+import { trigger } from "./mainLoop";
 import { updateErrorStats } from "./stats";
 
-const mainLoop = new MainLoop({
-  handle: internal.lib.loop,
-});
-
 const WHEEL_SEGMENT_MS = 125;
-
-function nowWheelSegment() {
-  return toWheelSegment(Date.now());
-}
 
 function toWheelSegment(ms: number) {
   return Math.floor(ms / WHEEL_SEGMENT_MS);
@@ -39,6 +31,7 @@ async function pullFromQueue<T extends TableNames, D extends Doc<T>>(
   window?: number
 ): Promise<[D[], boolean]> {
   const takeWindow = window ?? QUEUE_WINDOW;
+  // This is a retention issue.
   const items = await ctx.db.query(tableName).take(takeWindow + 1);
   const is_more = items.length > takeWindow;
   return [items.slice(0, takeWindow), is_more];
@@ -49,6 +42,7 @@ async function processIncoming(
   logger: Logger,
   ctx: MutationCtx
 ): Promise<boolean> {
+  // This will contend with everything inserted until there's >100 in the queue.
   const [incoming, is_more] = await pullFromQueue(ctx, "incoming");
 
   for (const job of incoming) {
@@ -92,6 +86,7 @@ const defaultFrozenOptions: FrozenOptions = {
 };
 
 async function getConfig(ctx: MutationCtx): Promise<[FrozenOptions, Logger]> {
+  // retention issue if it's being replaced?
   let frozen = await ctx.db.query("frozenConfig").first();
   const lastCommitted = await ctx.db.query("committed").order("desc").first();
   if (lastCommitted) {
@@ -124,6 +119,7 @@ async function processCancellations(
   ctx: MutationCtx,
   toFinalize: WithoutSystemFields<Doc<"ended">>[]
 ): Promise<boolean> {
+  // This will contend with everything canceled until there's >100.
   const [cancellations, is_more] = await pullFromQueue(ctx, "cancellations");
 
   for (const cancellation of cancellations) {
@@ -186,6 +182,7 @@ async function processEnded(
   ctx: MutationCtx,
   toFinalize: WithoutSystemFields<Doc<"ended">>[]
 ): Promise<boolean> {
+  // This will contend with everything as they finish.
   const [ended, is_more] = await pullFromQueue(ctx, "ended");
 
   for (const e of ended) {
@@ -224,6 +221,7 @@ async function processRunning(
   ) {
     loopState.lastLivePoll = Date.now();
     for (const r of running) {
+      // This will contend with each running job as they fail / retry / finish.
       const status = await ctx.db.system.get(r.schedulerId);
       logger.debug(
         `Polling running job ${r.job} (status=${status?.state.kind})`
@@ -372,8 +370,7 @@ async function runOnComplete(
   logger: Logger,
   ctx: MutationCtx,
   run: Doc<"committed">,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  result: any
+  result: RunResult
 ) {
   if (!run.options.onComplete) {
     return;
@@ -382,14 +379,12 @@ async function runOnComplete(
     logger.debug(`Running onComplete handler for ${run._id}`);
     const handle = run.options.onComplete as FunctionHandle<
       "mutation",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      any
+      { runId: Id<"incoming">; context: unknown; result: RunResult }
     >;
     await ctx.runMutation(handle, {
+      runId: run.incomingId,
       context: run.options.context,
-      result: result,
+      result,
     });
     logger.debug(`Finished running onComplete handler for ${run._id}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -425,7 +420,8 @@ export function withJitter(delay: number) {
 // Phase 6. Run jobs from the wheel.
 async function runWheelJobs(logger: Logger, ctx: MutationCtx, count: number) {
   logger.debug(`Running any ready wheel jobs (available threads = ${count})`);
-  const maxSegment = nowWheelSegment();
+  const maxSegment = toWheelSegment(Date.now());
+  // retention issue - constant insertions and deletions.
   const wheelJobs = await ctx.db
     .query("wheel")
     .withIndex("by_segment")
@@ -433,10 +429,12 @@ async function runWheelJobs(logger: Logger, ctx: MutationCtx, count: number) {
   let running = 0;
   for (const job of wheelJobs) {
     if (running === count) {
+      // This shouldn't be possible.
       logger.debug(`Reached max wheel jobs to run (count=${count})`);
       break;
     }
     if (job.segment > maxSegment) {
+      // We could just query for .lte(maxSegment) above
       logger.debug(`No more wheel jobs to run (maxSegment=${maxSegment})`);
       break;
     }
@@ -467,6 +465,7 @@ export const execute = internalAction({
     runId: v.id("committed"),
   },
   handler: async (ctx, args) => {
+    // why not pass in the run instead of id?
     const run = await ctx.runQuery(internal.lib.load, { runId: args.runId });
     if (!run) {
       throw new Error("Run not found");
@@ -474,8 +473,7 @@ export const execute = internalAction({
     const logger = createLogger(run.options.logLevel);
     logger.debug(`Executing run ${args.runId}`, run);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handle = run.handle as FunctionHandle<"action", any, any>;
+    const handle = run.handle as FunctionHandle<"action">;
     let result: RunResult;
     let endedAt;
     try {
@@ -540,14 +538,12 @@ export const loop = internalMutation({
     logger.debug("Starting loop");
 
     // Cancel a delayed call if one is registered.
+    // might be a retention issue if many docs are deleted and fetched.
     let loopState = await ctx.db.query("loopState").first();
     if (!loopState) {
       logger.debug("No loop state found -- creating");
       const loopId = await ctx.db.insert("loopState", {});
-      loopState = await ctx.db.get(loopId);
-      if (!loopState) {
-        throw new Error("Loop state not found");
-      }
+      loopState = (await ctx.db.get(loopId))!;
     } else {
       const wake = loopState.wake;
       if (wake) {
@@ -637,7 +633,7 @@ async function scheduleNextLoop(
   // immediately go keep the system moving.
   if (unprocessedQueues) {
     logger.debug("Unprocessed queues -- waking up immediately");
-    await mainLoop.trigger(ctx);
+    await trigger(ctx);
     return null;
   } else {
     // Get the minimum wheel segment.
@@ -684,7 +680,7 @@ export async function enqueueIncoming(
   job: WithoutSystemFields<Doc<"incoming">>
 ): Promise<Id<"incoming">> {
   const id = await ctx.db.insert("incoming", job);
-  await mainLoop.trigger(ctx);
+  await trigger(ctx);
   return id;
 }
 
@@ -694,7 +690,7 @@ export async function enqueueCancellation(
   job: WithoutSystemFields<Doc<"cancellations">>
 ) {
   await ctx.db.insert("cancellations", job);
-  await mainLoop.trigger(ctx);
+  await trigger(ctx);
 }
 
 export async function enqueueEnded(
@@ -703,7 +699,7 @@ export async function enqueueEnded(
   job: WithoutSystemFields<Doc<"ended">>
 ) {
   await ctx.db.insert("ended", job);
-  await mainLoop.trigger(ctx);
+  await trigger(ctx);
 }
 
 async function cancelIfRunning(

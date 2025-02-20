@@ -54,7 +54,7 @@ export type Mounts = {
         functionHandle: string;
         functionName: string;
         options: {
-          annotation?: string;
+          annotation: string | null;
           base: number;
           context?: any;
           initialBackoffMs: number;

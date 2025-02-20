@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { components, internal } from "./_generated/api";
+import { components } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -7,48 +7,9 @@ import {
   MutationCtx,
   QueryCtx,
 } from "./_generated/server";
-import { MainLoop } from "./mainLoop";
 import { Bound, DirectAggregate } from "@convex-dev/aggregate";
 import { createLogger } from "./logger";
 
-const mainLoop = new MainLoop({
-  handle: internal.stats.loop,
-});
-
-const STATS_WINDOW = 50;
-
-export const loop = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const stats = await ctx.db.query("stats").take(STATS_WINDOW);
-    for (const s of stats) {
-      await updateErrorStats(ctx, s.job, s.retry, s.error, s.finalRunTime);
-      await ctx.db.delete(s._id);
-    }
-  },
-});
-
-export async function emitStats(
-  ctx: MutationCtx,
-  records: Array<{
-    job: Id<"committed">;
-    retry: number;
-    when: number;
-    finalRunTime?: number;
-    error: boolean;
-  }>
-) {
-  for (const r of records) {
-    await ctx.db.insert("stats", {
-      job: r.job,
-      retry: r.retry,
-      when: r.when,
-      finalRunTime: r.finalRunTime,
-      error: r.error,
-    });
-  }
-  await mainLoop.trigger(ctx);
-}
 const statsAggregate = new DirectAggregate<{
   Namespace: "runTotal" | "runError" | "jobTotal" | "jobFailure";
   Key: number;
@@ -165,6 +126,8 @@ export const debugErrorStats = internalQuery({
   },
   handler: async (ctx, args) => {
     const logger = createLogger("DEBUG");
-    logger.debug(await getErrorStats(ctx, args.windowMs));
+    const stats = await getErrorStats(ctx, args.windowMs);
+    logger.debug(stats);
+    return stats;
   },
 });

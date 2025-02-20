@@ -1,25 +1,11 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, MutationCtx } from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import { ShardedCounter } from "@convex-dev/sharded-counter";
-import { FunctionHandle } from "convex/server";
 
 const counter = new ShardedCounter(components.shardedCounter, {
   shards: {
     gen: 64,
-  },
-});
-
-export const advanceAndPoll = internalMutation({
-  args: {
-    handle: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await counter.add(ctx, "gen", 1);
-    await ctx.scheduler.runAfter(0, internal.mainLoop.poll, {
-      handle: args.handle,
-    });
   },
 });
 
@@ -31,21 +17,24 @@ export const recover = internalMutation({
     if (currentGeneration === null) {
       return;
     }
-    await ctx.scheduler.runAfter(0, internal.mainLoop.poll, {
-      handle: currentGeneration.handle,
-    });
+    await ctx.scheduler.runAfter(0, internal.mainLoop.poll, {});
   },
 });
 
 export const poll = internalMutation({
   args: {
-    handle: v.string(),
     threshold: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // This is a contention issue: every call to trigger invalidates this.
     const generation = await counter.count(ctx, "gen");
-    const currentGeneration = await ctx.db.query("currentGeneration").unique();
+    // This is a retention issue if many docs are deleted and fetched.
+    // we could just re-use the existing doc.
+    const currentGeneration = await ctx.db
+      .query("currentGeneration")
+      .order("desc")
+      .first();
     if (args.threshold && generation === args.threshold) {
       if (currentGeneration !== null) {
         await ctx.db.delete(currentGeneration._id);
@@ -54,13 +43,11 @@ export const poll = internalMutation({
     }
     if (currentGeneration === null) {
       const job = await ctx.scheduler.runAfter(0, internal.mainLoop.runWrap, {
-        handle: args.handle,
         generation,
       });
       await ctx.db.insert("currentGeneration", {
         generation,
         job,
-        handle: args.handle,
       });
     } else {
       const job = currentGeneration.job;
@@ -74,10 +61,7 @@ export const poll = internalMutation({
         const newJob = await ctx.scheduler.runAfter(
           0,
           internal.mainLoop.runWrap,
-          {
-            handle: args.handle,
-            generation,
-          }
+          { generation }
         );
         await ctx.db.patch(currentGeneration._id, {
           generation,
@@ -91,38 +75,17 @@ export const poll = internalMutation({
 export const runWrap = internalMutation({
   args: {
     generation: v.number(),
-    handle: v.string(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const mut = args.handle as FunctionHandle<
-      "mutation",
-      Record<never, never>,
-      void
-    >;
-    await ctx.runMutation(mut, {});
+    await ctx.runMutation(internal.lib.loop, {});
     await ctx.scheduler.runAfter(0, internal.mainLoop.poll, {
-      handle: args.handle,
       threshold: args.generation,
     });
   },
 });
 
-import { createFunctionHandle } from "convex/server";
-import { FunctionReference } from "convex/server";
-import { MutationCtx } from "./_generated/server";
-
-export type Options = {
-  handle: FunctionReference<"mutation", "internal">,
-};
-
-export class MainLoop {
-  constructor(public options: Options) {}
-
-  public async trigger(ctx: MutationCtx) {
-    const handle = await createFunctionHandle(this.options.handle);
-    await ctx.runMutation(internal.mainLoop.advanceAndPoll, {
-      handle,
-    });
-  }
+export async function trigger(ctx: MutationCtx) {
+  await counter.add(ctx, "gen", 1);
+  await ctx.scheduler.runAfter(0, internal.mainLoop.poll, {});
 }

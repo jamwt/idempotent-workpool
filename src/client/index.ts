@@ -4,6 +4,7 @@ import {
   FunctionArgs,
   FunctionReference,
   FunctionVisibility,
+  GenericActionCtx,
   GenericDataModel,
   GenericMutationCtx,
   GenericQueryCtx,
@@ -15,7 +16,6 @@ import { GenericId } from "convex/values";
 import { LogLevel, runResult } from "../component/schema.js";
 import { JobStatus, Stats } from "../component/public.js";
 import { getDefaultLogLevel } from "../component/logger.js";
-import { ActionCtx } from "../component/_generated/server.js";
 
 export type RunId = string & { __isRunId: true };
 export const runIdValidator = v.string() as VString<RunId>;
@@ -311,7 +311,7 @@ export class IdempotentWorkpool {
    *
    * @param ctx - The context object from your mutation or action.
    */
-  async cancelAll(ctx: ActionCtx) {
+  async cancelAll(ctx: RunActionCtx) {
     await ctx.runAction(this.component.public.cancelAll, {});
   }
 
@@ -386,4 +386,8 @@ type RunQueryCtx = {
 
 type RunMutationCtx = {
   runMutation: GenericMutationCtx<GenericDataModel>["runMutation"];
+};
+
+type RunActionCtx = {
+  runAction: GenericActionCtx<GenericDataModel>["runAction"];
 };

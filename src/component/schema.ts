@@ -23,7 +23,7 @@ export const options = {
   initialDelayMs: v.number(),
   onComplete: v.optional(v.string()),
   annotation: v.union(v.string(), v.null()),
-  context: v.any(),
+  context: v.optional(v.any()),
 };
 const optionsObj = v.object(options);
 export type Options = Infer<typeof optionsObj>;

@@ -27,6 +27,7 @@ export const poll = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // This is a contention issue: every call to trigger invalidates this.
     const generation = await counter.count(ctx, "gen");
     // This is a retention issue if many docs are deleted and fetched.
     // we could just re-use the existing doc.

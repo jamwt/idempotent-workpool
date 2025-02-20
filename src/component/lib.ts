@@ -42,6 +42,7 @@ async function processIncoming(
   logger: Logger,
   ctx: MutationCtx
 ): Promise<boolean> {
+  // This will contend with everything inserted until there's >100 in the queue.
   const [incoming, is_more] = await pullFromQueue(ctx, "incoming");
 
   for (const job of incoming) {
@@ -118,6 +119,7 @@ async function processCancellations(
   ctx: MutationCtx,
   toFinalize: WithoutSystemFields<Doc<"ended">>[]
 ): Promise<boolean> {
+  // This will contend with everything canceled until there's >100.
   const [cancellations, is_more] = await pullFromQueue(ctx, "cancellations");
 
   for (const cancellation of cancellations) {
@@ -180,6 +182,7 @@ async function processEnded(
   ctx: MutationCtx,
   toFinalize: WithoutSystemFields<Doc<"ended">>[]
 ): Promise<boolean> {
+  // This will contend with everything as they finish.
   const [ended, is_more] = await pullFromQueue(ctx, "ended");
 
   for (const e of ended) {
@@ -218,6 +221,7 @@ async function processRunning(
   ) {
     loopState.lastLivePoll = Date.now();
     for (const r of running) {
+      // This will contend with each running job as they fail / retry / finish.
       const status = await ctx.db.system.get(r.schedulerId);
       logger.debug(
         `Polling running job ${r.job} (status=${status?.state.kind})`
@@ -425,10 +429,12 @@ async function runWheelJobs(logger: Logger, ctx: MutationCtx, count: number) {
   let running = 0;
   for (const job of wheelJobs) {
     if (running === count) {
+      // This shouldn't be possible.
       logger.debug(`Reached max wheel jobs to run (count=${count})`);
       break;
     }
     if (job.segment > maxSegment) {
+      // We could just query for .lte(maxSegment) above
       logger.debug(`No more wheel jobs to run (maxSegment=${maxSegment})`);
       break;
     }
@@ -459,6 +465,7 @@ export const execute = internalAction({
     runId: v.id("committed"),
   },
   handler: async (ctx, args) => {
+    // why not pass in the run instead of id?
     const run = await ctx.runQuery(internal.lib.load, { runId: args.runId });
     if (!run) {
       throw new Error("Run not found");

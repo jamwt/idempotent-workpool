@@ -28,7 +28,12 @@ export const poll = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const generation = await counter.count(ctx, "gen");
-    const currentGeneration = await ctx.db.query("currentGeneration").unique();
+    // This is a retention issue if many docs are deleted and fetched.
+    // we could just re-use the existing doc.
+    const currentGeneration = await ctx.db
+      .query("currentGeneration")
+      .order("desc")
+      .first();
     if (args.threshold && generation === args.threshold) {
       if (currentGeneration !== null) {
         await ctx.db.delete(currentGeneration._id);

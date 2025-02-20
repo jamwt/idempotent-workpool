@@ -31,6 +31,7 @@ async function pullFromQueue<T extends TableNames, D extends Doc<T>>(
   window?: number
 ): Promise<[D[], boolean]> {
   const takeWindow = window ?? QUEUE_WINDOW;
+  // This is a retention issue.
   const items = await ctx.db.query(tableName).take(takeWindow + 1);
   const is_more = items.length > takeWindow;
   return [items.slice(0, takeWindow), is_more];
@@ -84,6 +85,7 @@ const defaultFrozenOptions: FrozenOptions = {
 };
 
 async function getConfig(ctx: MutationCtx): Promise<[FrozenOptions, Logger]> {
+  // retention issue if it's being replaced?
   let frozen = await ctx.db.query("frozenConfig").first();
   const lastCommitted = await ctx.db.query("committed").order("desc").first();
   if (lastCommitted) {
@@ -415,6 +417,7 @@ export function withJitter(delay: number) {
 async function runWheelJobs(logger: Logger, ctx: MutationCtx, count: number) {
   logger.debug(`Running any ready wheel jobs (available threads = ${count})`);
   const maxSegment = toWheelSegment(Date.now());
+  // retention issue - constant insertions and deletions.
   const wheelJobs = await ctx.db
     .query("wheel")
     .withIndex("by_segment")
@@ -528,14 +531,12 @@ export const loop = internalMutation({
     logger.debug("Starting loop");
 
     // Cancel a delayed call if one is registered.
+    // might be a retention issue if many docs are deleted and fetched.
     let loopState = await ctx.db.query("loopState").first();
     if (!loopState) {
       logger.debug("No loop state found -- creating");
       const loopId = await ctx.db.insert("loopState", {});
-      loopState = await ctx.db.get(loopId);
-      if (!loopState) {
-        throw new Error("Loop state not found");
-      }
+      loopState = (await ctx.db.get(loopId))!;
     } else {
       const wake = loopState.wake;
       if (wake) {
